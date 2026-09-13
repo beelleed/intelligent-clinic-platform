@@ -1,0 +1,8 @@
+.env
+env/
+__pycache__/
+*.pyc
+.vscode/
+
+data/vector_store.index
+data/vector_metadata.pkl

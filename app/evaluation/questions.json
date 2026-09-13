@@ -1,0 +1,214 @@
+[
+  {
+    "id": "D01",
+    "category": "direct",
+    "question": "What are the clinic's opening hours?",
+    "answerable": true,
+    "expected_text": "The clinic is open Monday through Friday from 9:00 AM to 12:00 PM and from 2:00 PM to 6:00 PM."
+  },
+  {
+    "id": "D02",
+    "category": "direct",
+    "question": "How early should first-time patients arrive?",
+    "answerable": true,
+    "expected_text": "First-time patients should arrive 15 minutes before their scheduled appointment."
+  },
+  {
+    "id": "D03",
+    "category": "direct",
+    "question": "How can patients book an appointment?",
+    "answerable": true,
+    "expected_text": "Appointments can be booked online or by calling the clinic during business hours."
+  },
+  {
+    "id": "D04",
+    "category": "direct",
+    "question": "What should patients do to cancel or reschedule an appointment?",
+    "answerable": true,
+    "expected_text": "Patients who need to cancel or reschedule an appointment should contact the clinic before their scheduled appointment time."
+  },
+  {
+    "id": "D05",
+    "category": "direct",
+    "question": "What status can staff set when the doctor is performing a procedure?",
+    "answerable": true,
+    "expected_text": "When the doctor is performing a procedure, the clinic staff can update the doctor's status to \"In Surgery.\""
+  },
+  {
+    "id": "D06",
+    "category": "direct",
+    "question": "How long is a standard procedure initially estimated to take?",
+    "answerable": true,
+    "expected_text": "A standard procedure is initially estimated to take 90 minutes."
+  },
+  {
+    "id": "D07",
+    "category": "direct",
+    "question": "By how many minutes can staff extend the estimated completion time?",
+    "answerable": true,
+    "expected_text": "If the procedure takes longer than expected, clinic staff can extend the estimated completion time by 15, 30, or 60 minutes."
+  },
+  {
+    "id": "D08",
+    "category": "direct",
+    "question": "Is the estimated procedure completion time exact?",
+    "answerable": true,
+    "expected_text": "The estimated completion time is only an approximation and may change depending on the actual procedure."
+  },
+  {
+    "id": "D09",
+    "category": "direct",
+    "question": "What number does the clinic website display?",
+    "answerable": true,
+    "expected_text": "The clinic website displays the number currently being seen."
+  },
+  {
+    "id": "D10",
+    "category": "direct",
+    "question": "Can patients check the consultation progress remotely?",
+    "answerable": true,
+    "expected_text": "Patients can check the clinic website remotely to view the latest consultation progress."
+  },
+
+  {
+    "id": "P01",
+    "category": "paraphrased",
+    "question": "When is the clinic available for visits during the workweek?",
+    "answerable": true,
+    "expected_text": "The clinic is open Monday through Friday from 9:00 AM to 12:00 PM and from 2:00 PM to 6:00 PM."
+  },
+  {
+    "id": "P02",
+    "category": "paraphrased",
+    "question": "If I have never visited before, how much earlier should I show up?",
+    "answerable": true,
+    "expected_text": "First-time patients should arrive 15 minutes before their scheduled appointment."
+  },
+  {
+    "id": "P03",
+    "category": "paraphrased",
+    "question": "What options are available for scheduling a visit?",
+    "answerable": true,
+    "expected_text": "Appointments can be booked online or by calling the clinic during business hours."
+  },
+  {
+    "id": "P04",
+    "category": "paraphrased",
+    "question": "What should someone do if they can no longer make their scheduled visit?",
+    "answerable": true,
+    "expected_text": "Patients who need to cancel or reschedule an appointment should contact the clinic before their scheduled appointment time."
+  },
+  {
+    "id": "P05",
+    "category": "paraphrased",
+    "question": "How should the doctor's availability appear while a procedure is underway?",
+    "answerable": true,
+    "expected_text": "When the doctor is performing a procedure, the clinic staff can update the doctor's status to \"In Surgery.\""
+  },
+  {
+    "id": "P06",
+    "category": "paraphrased",
+    "question": "What is the usual expected duration of a procedure?",
+    "answerable": true,
+    "expected_text": "A standard procedure is initially estimated to take 90 minutes."
+  },
+  {
+    "id": "P07",
+    "category": "paraphrased",
+    "question": "If an operation is running behind schedule, how can staff adjust its expected finish time?",
+    "answerable": true,
+    "expected_text": "If the procedure takes longer than expected, clinic staff can extend the estimated completion time by 15, 30, or 60 minutes."
+  },
+  {
+    "id": "P08",
+    "category": "paraphrased",
+    "question": "Can the predicted end time of a procedure change?",
+    "answerable": true,
+    "expected_text": "The estimated completion time is only an approximation and may change depending on the actual procedure."
+  },
+  {
+    "id": "P09",
+    "category": "paraphrased",
+    "question": "How is the current place in the waiting queue kept up to date?",
+    "answerable": true,
+    "expected_text": "Clinic staff update the current number as patients complete their visits."
+  },
+  {
+    "id": "P10",
+    "category": "paraphrased",
+    "question": "Can someone see how far the doctor has progressed through today's patients without being at the clinic?",
+    "answerable": true,
+    "expected_text": "Patients can check the clinic website remotely to view the latest consultation progress."
+  },
+
+  {
+    "id": "U01",
+    "category": "unanswerable",
+    "question": "What payment methods does the clinic accept?",
+    "answerable": false,
+    "expected_text": null
+  },
+  {
+    "id": "U02",
+    "category": "unanswerable",
+    "question": "Does the clinic provide parking?",
+    "answerable": false,
+    "expected_text": null
+  },
+  {
+    "id": "U03",
+    "category": "unanswerable",
+    "question": "What is the clinic's phone number?",
+    "answerable": false,
+    "expected_text": null
+  },
+  {
+    "id": "U04",
+    "category": "unanswerable",
+    "question": "Does the clinic accept walk-in patients?",
+    "answerable": false,
+    "expected_text": null
+  },
+  {
+    "id": "U05",
+    "category": "unanswerable",
+    "question": "Which insurance plans does the clinic accept?",
+    "answerable": false,
+    "expected_text": null
+  },
+  {
+    "id": "U06",
+    "category": "unanswerable",
+    "question": "Is the clinic open on weekends?",
+    "answerable": false,
+    "expected_text": null
+  },
+  {
+    "id": "U07",
+    "category": "unanswerable",
+    "question": "What medical specialties does the doctor provide?",
+    "answerable": false,
+    "expected_text": null
+  },
+  {
+    "id": "U08",
+    "category": "unanswerable",
+    "question": "Does the clinic offer emergency services?",
+    "answerable": false,
+    "expected_text": null
+  },
+  {
+    "id": "U09",
+    "category": "unanswerable",
+    "question": "What documents should patients bring to their appointment?",
+    "answerable": false,
+    "expected_text": null
+  },
+  {
+    "id": "U10",
+    "category": "unanswerable",
+    "question": "Can patients request prescription refills online?",
+    "answerable": false,
+    "expected_text": null
+  }
+]

@@ -1,0 +1,27 @@
+Clinic Information
+
+The clinic is open Monday through Friday from 9:00 AM to 12:00 PM and from 2:00 PM to 6:00 PM.
+
+First-time patients should arrive 15 minutes before their scheduled appointment.
+
+Appointments can be booked online or by calling the clinic during business hours.
+
+Patients who need to cancel or reschedule an appointment should contact the clinic before their scheduled appointment time.
+
+Surgery Schedule
+
+When the doctor is performing a procedure, the clinic staff can update the doctor's status to "In Surgery."
+
+A standard procedure is initially estimated to take 90 minutes.
+
+If the procedure takes longer than expected, clinic staff can extend the estimated completion time by 15, 30, or 60 minutes.
+
+The estimated completion time is only an approximation and may change depending on the actual procedure.
+
+Waiting Status
+
+The clinic website displays the number currently being seen.
+
+Clinic staff update the current number as patients complete their visits.
+
+Patients can check the clinic website remotely to view the latest consultation progress.
