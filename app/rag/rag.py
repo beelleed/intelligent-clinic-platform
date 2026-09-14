@@ -1,9 +1,10 @@
+from app.rag.relevance import check_relevance
+from app.rag.retriever import search
+
 import os
 
 from dotenv import load_dotenv
 from openai import OpenAI
-
-from app.rag.retriever import search
 
 
 load_dotenv()
@@ -16,7 +17,30 @@ if not api_key:
 client = OpenAI(api_key=api_key)
 
 
+def filter_relevant_results(question, retrieved_results):
+    relevant_results = []
+
+    for result in retrieved_results:
+        context = result["metadata"]["text"]
+
+        relevance = check_relevance(
+            question,
+            context
+        )
+
+        if relevance == "RELEVANT":
+            relevant_results.append(result)
+
+    return relevant_results
+
+
 def generate_answer(question, retrieved_results):
+    if not retrieved_results:
+        return (
+            "I don't have enough information "
+            "in the provided clinic documents."
+        )
+
     context_parts = []
 
     for rank, result in enumerate(
@@ -29,7 +53,6 @@ def generate_answer(question, retrieved_results):
             f"[Source {rank}]\n"
             f"Document: {metadata['source']}\n"
             f"Chunk: {metadata['chunk_id']}\n"
-            f"Similarity: {result['score']:.4f}\n"
             f"{metadata['text']}"
         )
 
@@ -63,20 +86,20 @@ Question:
 
 
 if __name__ == "__main__":
-    question = "What number does the clinic website display?"
+    question = (
+        "What is the clinic's phone number?"
+    )
 
     retrieved_results = search(
         question,
-        top_k=2
+        top_k=2,
+        min_similarity=0.50
     )
 
-    MIN_SIMILARITY = 0.50
-
-    relevant_results = [
-        result
-        for result in retrieved_results
-        if result["score"] >= MIN_SIMILARITY
-    ]
+    relevant_results = filter_relevant_results(
+        question,
+        retrieved_results
+    )
 
     answer = generate_answer(
         question,
