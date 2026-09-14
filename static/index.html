@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Clinic Knowledge Assistant</title>
+
+    <link
+        rel="stylesheet"
+        href="/static/style.css"
+    >
+</head>
+
+<body>
+    <div class="page">
+        <header class="hero">
+            <div class="badge">
+                AI-POWERED CLINIC ASSISTANT
+            </div>
+
+            <h1>
+                Clinic Knowledge Assistant
+            </h1>
+
+            <p class="subtitle">
+                Get grounded answers from verified clinic
+                operational documents.
+            </p>
+        </header>
+
+        <main>
+            <section class="card">
+                <div class="section-header">
+                    <div>
+                        <h2>Ask a question</h2>
+                        <p>
+                            Ask about clinic hours, appointments,
+                            surgery procedures, or waiting status.
+                        </p>
+                    </div>
+                </div>
+
+                <textarea
+                    id="question"
+                    rows="5"
+                    placeholder="e.g. What should staff do if a procedure takes longer than expected?"
+                ></textarea>
+
+                <div class="actions">
+                    <button id="ask-button">
+                        Ask AI
+                    </button>
+                </div>
+
+                <div class="examples">
+                    <span>Try an example:</span>
+
+                    <button
+                        class="example-button"
+                        data-question="What are the clinic's opening hours?"
+                    >
+                        Clinic hours
+                    </button>
+
+                    <button
+                        class="example-button"
+                        data-question="What should staff do if a procedure takes longer than expected?"
+                    >
+                        Surgery delay
+                    </button>
+
+                    <button
+                        class="example-button"
+                        data-question="What number does the clinic website display?"
+                    >
+                        Waiting status
+                    </button>
+                </div>
+            </section>
+
+            <section
+                id="loading"
+                class="card loading hidden"
+            >
+                <div class="spinner"></div>
+                <div>
+                    <strong>Searching clinic knowledge...</strong>
+                    <p>
+                        Retrieving relevant information and validating
+                        the context.
+                    </p>
+                </div>
+            </section>
+
+            <section
+                id="answer-section"
+                class="card hidden"
+            >
+                <div class="result-label">
+                    ANSWER
+                </div>
+
+                <div
+                    id="answer"
+                    class="answer"
+                ></div>
+
+                <div class="source-header">
+                    <div class="result-label">
+                        SOURCES
+                    </div>
+                </div>
+
+                <div id="sources"></div>
+
+                <div class="grounding-note">
+                    ✓ Answer generated from retrieved clinic documents
+                </div>
+            </section>
+
+            <section
+                id="error-section"
+                class="card error hidden"
+            >
+                <strong>Unable to process the request.</strong>
+                <p id="error-message"></p>
+            </section>
+
+            <section class="info-grid">
+                <div class="info-card">
+                    <h3>RAG Retrieval</h3>
+                    <p>
+                        Semantic search retrieves relevant clinic
+                        information before generating an answer.
+                    </p>
+                </div>
+
+                <div class="info-card">
+                    <h3>Grounded Responses</h3>
+                    <p>
+                        Unsupported questions are rejected instead of
+                        inventing clinic information.
+                    </p>
+                </div>
+
+                <div class="info-card">
+                    <h3>Source Attribution</h3>
+                    <p>
+                        Retrieved document sources are shown with
+                        each supported response.
+                    </p>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>
+                Prototype for clinic knowledge management and
+                operations.
+            </p>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
