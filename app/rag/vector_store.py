@@ -31,24 +31,51 @@ def build_vector_store():
 
     dimension = embeddings.shape[1]
 
-    index = faiss.IndexFlatIP(dimension)
-
     faiss.normalize_L2(embeddings)
 
+    index = faiss.IndexFlatIP(dimension)
     index.add(embeddings)
 
     metadata = chunks
 
-    faiss.write_index(index, INDEX_PATH)
+    faiss.write_index(
+        index,
+        INDEX_PATH
+    )
 
-    with open(METADATA_PATH, "wb") as file:
-        pickle.dump(metadata, file)
+    with open(
+        METADATA_PATH,
+        "wb"
+    ) as file:
+        pickle.dump(
+            metadata,
+            file
+        )
 
-    print(f"Stored {index.ntotal} vectors.")
-    print(f"Vector dimension: {dimension}")
-    print(f"Index saved to: {INDEX_PATH}")
-    print(f"Metadata saved to: {METADATA_PATH}")
+    print(
+        f"Stored {index.ntotal} vectors."
+    )
+
+    print(
+        f"Vector dimension: {dimension}"
+    )
+
+
+def vector_store_exists():
+    return (
+        os.path.exists(INDEX_PATH)
+        and os.path.exists(METADATA_PATH)
+    )
+
+
+def initialize_vector_store():
+    if vector_store_exists():
+        print("Vector store already exists.")
+        return
+
+    print("Vector store not found. Building...")
+    build_vector_store()
 
 
 if __name__ == "__main__":
-    build_vector_store()
+    initialize_vector_store()

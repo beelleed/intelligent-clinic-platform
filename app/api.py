@@ -8,12 +8,17 @@ from app.rag.rag import (
     generate_answer,
 )
 from app.rag.retriever import search
+from app.rag.vector_store import initialize_vector_store
 
 
 app = FastAPI(
     title="AI-Powered Clinic Knowledge Assistant",
     version="1.0.0"
 )
+
+@app.on_event("startup")
+def startup_event():
+    initialize_vector_store()
 
 app.mount(
     "/static",
