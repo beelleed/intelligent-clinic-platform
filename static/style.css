@@ -134,6 +134,17 @@ textarea:focus {
 
 .example-button:hover {
     background: #f9fafb;
+    border-color: #98a2b3;
+}
+
+.example-button.selected {
+    background: #172033;
+    border-color: #172033;
+    color: white;
+}
+
+.example-button:focus {
+    outline: none;
 }
 
 .result-label {
@@ -265,4 +276,20 @@ footer {
     .info-grid {
         grid-template-columns: 1fr;
     }
+}
+
+.demo-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+.question-label {
+    margin-top: 26px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #667085;
 }

@@ -1,9 +1,6 @@
 const questionInput =
     document.getElementById("question");
 
-const askButton =
-    document.getElementById("ask-button");
-
 const loadingSection =
     document.getElementById("loading");
 
@@ -30,14 +27,11 @@ function showLoading() {
     loadingSection.classList.remove("hidden");
     answerSection.classList.add("hidden");
     errorSection.classList.add("hidden");
-
-    askButton.disabled = true;
 }
 
 
 function hideLoading() {
     loadingSection.classList.add("hidden");
-    askButton.disabled = false;
 }
 
 
@@ -54,9 +48,7 @@ function renderSources(sources) {
         const empty = document.createElement("div");
 
         empty.className = "source";
-
-        empty.textContent =
-            "No relevant source found.";
+        empty.textContent = "No relevant source found.";
 
         sourcesElement.appendChild(empty);
 
@@ -73,9 +65,7 @@ function renderSources(sources) {
             document.createElement("div");
 
         title.className = "source-title";
-
-        title.textContent =
-            source.source;
+        title.textContent = source.source;
 
         const meta =
             document.createElement("div");
@@ -94,27 +84,21 @@ function renderSources(sources) {
 }
 
 
-async function askQuestion() {
-    const question =
-        questionInput.value.trim();
-
-    if (!question) {
-        showError("Please enter a question.");
-        return;
-    }
-
+async function runDemo(demoId, question) {
     showLoading();
+
+    questionInput.value = question;
+    errorSection.classList.add("hidden");
 
     try {
         const response =
-            await fetch("/query", {
+            await fetch("/demo/query", {
                 method: "POST",
                 headers: {
-                    "Content-Type":
-                        "application/json"
+                    "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    question: question
+                    demo_id: demoId
                 })
             });
 
@@ -132,19 +116,13 @@ async function askQuestion() {
 
         renderSources(data.sources);
 
-        answerSection.classList.remove(
-            "hidden"
-        );
-
-        errorSection.classList.add(
-            "hidden"
-        );
+        answerSection.classList.remove("hidden");
 
     } catch (error) {
         console.error(error);
 
         showError(
-            "Unable to process the question. Please try again."
+            "Unable to run the demo. Please try again."
         );
     } finally {
         hideLoading();
@@ -152,33 +130,25 @@ async function askQuestion() {
 }
 
 
-askButton.addEventListener(
-    "click",
-    askQuestion
-);
-
-
 exampleButtons.forEach((button) => {
-    button.addEventListener(
-        "click",
-        () => {
-            questionInput.value =
-                button.dataset.question;
+    button.addEventListener("click", () => {
+        const demoId =
+            button.dataset.demoId;
 
-            questionInput.focus();
-        }
-    );
+        const question =
+            button.dataset.question;
+
+        document
+            .querySelectorAll(".example-button")
+            .forEach((item) => {
+                item.classList.remove("selected");
+            });
+
+        button.classList.add("selected");
+
+        runDemo(
+            demoId,
+            question
+        );
+    });
 });
-
-
-questionInput.addEventListener(
-    "keydown",
-    (event) => {
-        if (
-            (event.ctrlKey || event.metaKey) &&
-            event.key === "Enter"
-        ) {
-            askQuestion();
-        }
-    }
-);

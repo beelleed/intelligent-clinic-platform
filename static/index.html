@@ -36,31 +36,17 @@
             <section class="card">
                 <div class="section-header">
                     <div>
-                        <h2>Ask a question</h2>
+                        <h2>Try a demo</h2>
                         <p>
-                            Ask about clinic hours, appointments,
-                            surgery procedures, or waiting status.
+                            Explore four example scenarios from the clinic knowledge base.
                         </p>
                     </div>
                 </div>
 
-                <textarea
-                    id="question"
-                    rows="5"
-                    placeholder="e.g. What should staff do if a procedure takes longer than expected?"
-                ></textarea>
-
-                <div class="actions">
-                    <button id="ask-button">
-                        Ask AI
-                    </button>
-                </div>
-
-                <div class="examples">
-                    <span>Try an example:</span>
-
+                <div class="demo-buttons">
                     <button
                         class="example-button"
+                        data-demo-id="clinic-hours"
                         data-question="What are the clinic's opening hours?"
                     >
                         Clinic hours
@@ -68,6 +54,7 @@
 
                     <button
                         class="example-button"
+                        data-demo-id="surgery-delay"
                         data-question="What should staff do if a procedure takes longer than expected?"
                     >
                         Surgery delay
@@ -75,11 +62,31 @@
 
                     <button
                         class="example-button"
+                        data-demo-id="waiting-status"
                         data-question="What number does the clinic website display?"
                     >
                         Waiting status
                     </button>
+
+                    <button
+                        class="example-button"
+                        data-demo-id="unsupported"
+                        data-question="What is the clinic's phone number?"
+                    >
+                        Unsupported question
+                    </button>
                 </div>
+
+                <div class="question-label">
+                    Selected question
+                </div>
+
+                <textarea
+                    id="question"
+                    rows="4"
+                    readonly
+                    placeholder="Choose a demo above..."
+                ></textarea>
             </section>
 
             <section
