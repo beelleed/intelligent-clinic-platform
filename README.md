@@ -779,11 +779,9 @@ Generated vector-store artifacts, API credentials, and local environment files a
 ### 📥 1. Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/intelligent-clinic-platform.git
+git clone https://github.com/beelleed/intelligent-clinic-platform.git
 cd intelligent-clinic-platform
 ```
-
-Replace `YOUR_USERNAME` with the repository owner's GitHub username.
 
 ### 🐍 2. Create a Python Environment
 
