@@ -25,3 +25,13 @@ The clinic website displays the number currently being seen.
 Clinic staff update the current number as patients complete their visits.
 
 Patients can check the clinic website remotely to view the latest consultation progress.
+
+Contact and Access
+
+The sample clinic's main telephone number is (213) 555-0147.
+
+Staff answer the telephone Monday through Friday from 9:00 AM to 12:00 PM and from 2:00 PM to 6:00 PM Pacific Time.
+
+The sample clinic provides free designated visitor parking. Accessible parking spaces and a passenger drop-off area are available near the main entrance.
+
+Parking spaces are limited, available on a first-come, first-served basis, and cannot be reserved through the website.

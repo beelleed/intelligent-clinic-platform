@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "clinic_operations": {
+      "command": "${PYTHON_EXECUTABLE}",
+      "args": ["-m", "mcp_servers.clinic_operations.server"]
+    },
+    "clinic_appointments": {
+      "command": "${PYTHON_EXECUTABLE}",
+      "args": ["-m", "mcp_servers.clinic_appointments.server"]
+    },
+    "clinic_knowledge": {
+      "command": "${PYTHON_EXECUTABLE}",
+      "args": ["-m", "mcp_servers.clinic_knowledge.server"]
+    }
+  }
+}
+

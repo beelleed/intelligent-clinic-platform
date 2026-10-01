@@ -1,5 +1,6 @@
 import os
 import pickle
+from pathlib import Path
 
 import faiss
 import numpy as np
@@ -9,12 +10,16 @@ from app.rag.embeddings import create_embedding
 from app.rag.loader import load_text_file
 
 
-INDEX_PATH = "data/vector_store.index"
-METADATA_PATH = "data/vector_metadata.pkl"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIRECTORY = PROJECT_ROOT / "data"
+INDEX_PATH = DATA_DIRECTORY / "vector_store.index"
+METADATA_PATH = DATA_DIRECTORY / "vector_metadata.pkl"
+KNOWLEDGE_PATH = DATA_DIRECTORY / "clinic_faq.txt"
 
 
 def build_vector_store():
-    text = load_text_file("data/clinic_faq.txt")
+    DATA_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    text = load_text_file(KNOWLEDGE_PATH)
 
     chunks = chunk_text(text)
 
@@ -40,7 +45,7 @@ def build_vector_store():
 
     faiss.write_index(
         index,
-        INDEX_PATH
+        str(INDEX_PATH)
     )
 
     with open(

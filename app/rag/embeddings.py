@@ -9,19 +9,27 @@ from app.rag.chunker import chunk_text
 
 load_dotenv()
 
-api_key = os.getenv("OPENAI_API_KEY")
+def _create_client() -> OpenAI:
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY is not set.")
+    return OpenAI(api_key=api_key)
 
-if not api_key:
-    raise ValueError("OPENAI_API_KEY is not set.")
 
-client = OpenAI(api_key=api_key)
+def create_embeddings(texts: list[str]) -> list[list[float]]:
+    """Create embeddings in one request for efficient index construction."""
+    if not texts:
+        return []
+
+    response = _create_client().embeddings.create(
+        model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
+        input=texts,
+    )
+    return [item.embedding for item in sorted(response.data, key=lambda item: item.index)]
 
 
 def create_embedding(text):
-    response = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=text
-    )
+    return create_embeddings([text])[0]
 
     return response.data[0].embedding
 

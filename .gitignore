@@ -6,3 +6,9 @@ __pycache__/
 
 data/vector_store.index
 data/vector_metadata.pkl
+data/clinic_knowledge.index
+data/clinic_knowledge_index.json
+data/*.db
+.pytest_cache/
+.pytest-tmp*/
+tmp/

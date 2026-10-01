@@ -1,732 +1,276 @@
-# 🏥 AI-Powered Clinic Knowledge Management Platform
+# 🏥 Intelligent Clinic Assistant
 
-A retrieval-augmented generation (RAG) system that provides **source-grounded answers from clinic operational documents**.
+A portfolio-ready clinic operations and knowledge assistant built with
+**FastAPI, LangGraph, Model Context Protocol (MCP), OpenAI, FAISS, SQLite, and
+JavaScript**.
 
-The system combines **OpenAI embeddings, FAISS vector retrieval, LLM-based relevance validation, FastAPI, and an interactive web interface** to improve retrieval quality, reduce unsupported responses, and provide traceable answers with source attribution.
+The browser opens in a no-cost **Clinic FAQ mode**. Visitors can optionally
+switch to **Lumi**, a virtual clinic guide that uses a LangGraph agent to select
+from nine tools exposed by three MCP servers. Lumi can answer source-grounded
+policy questions, read synthetic queue and procedure status, check doctor
+schedules, and reserve anonymous synthetic appointment slots while retaining
+context within the browser session.
 
-The current version focuses on the AI knowledge-management layer of a broader clinic operations platform, with future extensions planned for real-time queue tracking, procedure status updates, and appointment management.
-
-[🌐 Live Demo](https://intelligent-clinic-platform--belle16810.replit.app/) | [📘 API Documentation](https://intelligent-clinic-platform--belle16810.replit.app/docs)
-
----
-
-## 🖥️ Web Demo
-
-![Clinic Knowledge Assistant Demo](images/web_demo.png)
-
-The web interface demonstrates grounded clinic-information retrieval through predefined scenarios covering clinic hours, procedure delays, waiting status, and unsupported questions.
-
-The public deployment runs in a **restricted demo mode**. The unrestricted LLM endpoint is disabled in the public environment, allowing the application to be demonstrated without exposing an OpenAI API credential or enabling uncontrolled inference usage.
+> All doctors, queues, procedures, appointments, contact details, and
+> timestamps in this project are synthetic. The application is not connected
+> to a real clinic and does not provide medical advice.
 
 ---
 
-## ✨ Key Features
+## ✨ Highlights
 
-- 🔎 **Retrieval-Augmented Generation (RAG)** over clinic operational documents
-- 🧠 **OpenAI embeddings** for semantic retrieval
-- ⚡ **Persistent FAISS vector indexing** for similarity search
-- 📄 **Paragraph-level chunking** for fine-grained retrieval
-- 🎯 **Top-K semantic retrieval** with similarity filtering
-- ✅ **LLM-based relevance validation** for retrieved context
-- 🛡️ **Grounded generation** with unsupported-query handling
-- 🔗 **Source attribution** for supported responses
-- 📊 **30-query evaluation benchmark** covering direct, paraphrased, and unanswerable queries
-- 🌐 **FastAPI REST API** with an interactive HTML/CSS/JavaScript interface
-- 🔒 **Restricted public demo mode** with the unrestricted LLM endpoint disabled
-- ☁️ **Public deployment on Replit**
+- 📚 FAQ-first interface with ten fixed, source-attributed clinic answers
+- 💡 Lumi virtual clinic guide with free-form, multi-turn conversation
+- 🧠 LangGraph agent with session-scoped memory and multi-tool chaining
+- 🔌 Three MCP servers exposing nine typed tools
+- 🔎 OpenAI-powered semantic retrieval over a persistent FAISS index
+- 🗄️ Synthetic queue, procedure, schedule, and appointment data in SQLite
+- 🕒 Pacific Time presentation with UTC timestamp storage
+- 📅 Anonymous appointment reservations without patient or insurance data
+- 🛡️ Input validation, IP rate limiting, safe errors, and a public chat switch
+- 📊 Original RAG pipeline and 30-query retrieval evaluation retained
+- 🐳 Multi-stage, non-root Docker image
+- ✅ 58 automated tests covering the API, MCP integration, retrieval, memory,
+  validation, rate limits, failure handling, and container files
 
 ---
 
-## 🎯 Project Motivation
+## 🖥️ Web Experience
 
-Clinic information can be distributed across schedules, operational policies, staff instructions, and patient-facing documents.
+### 📚 Clinic FAQ mode
 
-A standalone language model may generate plausible responses even when the required information is not available in the clinic's knowledge base. For operational use, this creates a reliability problem.
+![Clinic FAQ mode](images/faq_mode.png)
 
-This project explores a retrieval-first architecture in which the system:
+FAQ mode is the default landing page. It provides ten predefined questions
+covering clinic hours, parking, check-in and late arrival, cancellations,
+appointment requests, wait-time estimates, procedure-status labels, privacy,
+urgent help, and sample contact information.
 
-1. Retrieves relevant information from clinic documents.
-2. Validates whether the retrieved context actually helps answer the question.
-3. Generates an answer using only validated context.
-4. Returns the supporting source information.
-5. Abstains when the available documents do not contain sufficient information.
+FAQ answers are returned through `POST /demo/query`. They do not call OpenAI
+and do not consume Lumi's request quota. Current queue, procedure, schedule,
+and appointment availability are intentionally excluded from this mode.
 
-The goal is not only to generate answers, but to build a system whose retrieval behavior can be **measured, analyzed, and improved**.
+### 💡 Ask Lumi
+
+![Lumi multi-tool response](images/agent_demo.png)
+
+When `PUBLIC_CHAT_ENABLED=true`, the **Ask Lumi** button opens the free-form
+agent interface. Lumi sends questions to `POST /chat`, discovers the MCP tools,
+selects the appropriate tool or tools, and cites the supporting policy document
+or operational tool in the response.
+
+The example above combines live synthetic procedure status from
+`clinic_operations_get_procedure_status` with wait-time policy retrieved from
+`queue-and-wait-times`.
+
+### 🧠 Dynamic status and session memory
+
+<p align="center">
+  <img src="images/lumi_procedure_initial.png" width="49%" alt="Initial Lumi procedure-status response">
+  <img src="images/lumi_procedure_followup.png" width="49%" alt="Follow-up Lumi response using session memory">
+</p>
+
+The follow-up asks only to check again. Lumi retains the doctor and procedure
+context under the same browser session ID, calls the tool again, and returns a
+new remaining-time estimate. Public timestamps are displayed in Pacific Time.
 
 ---
 
 ## 🏗️ System Architecture
 
-![System Architecture](images/system_architecture.png)
+```mermaid
+flowchart TB
+    Visitor[Browser visitor] --> UI[FAQ-first HTML / CSS / JavaScript]
 
-The application separates three major concerns:
+    UI -->|Clinic FAQ choice| Demo[POST /demo/query]
+    Demo --> FAQ[10 fixed source-attributed answers]
 
-1. **Offline knowledge ingestion**
-2. **Full RAG inference**
-3. **Restricted public demonstration**
+    UI -->|Ask Lumi| Chat[POST /chat]
+    Chat --> Guard[Validation, IP rate limits, safe errors]
+    Guard --> Agent[LangGraph agent and session memory]
+    OpenAI[OpenAI API] <--> Agent
+    Agent --> Adapter[LangChain MCP adapter]
 
-### 📚 Offline Knowledge Ingestion
+    Adapter --> Ops[clinic_operations MCP]
+    Adapter --> Knowledge[clinic_knowledge MCP]
+    Adapter --> Appointments[clinic_appointments MCP]
 
-```text
-Clinic Documents
-       │
-       ▼
-Document Loader
-       │
-       ▼
-Paragraph-Level Chunking
-       │
-       ▼
-OpenAI Embeddings
-       │
-       ▼
-Persistent FAISS Index
+    Ops --> OpsDB[(Synthetic operations SQLite)]
+    Knowledge --> FAISS[(Persistent FAISS index)]
+    Policies[Public clinic policy Markdown] --> FAISS
+    Appointments --> ApptDB[(Synthetic appointments SQLite)]
+
+    UI -. legacy evaluation path .-> Query[POST /query]
+    Query --> RAG[Original RAG pipeline]
+    RAG --> FAISS
+
+    Clock[Pacific Time display / UTC storage] -.-> Ops
+    Clock -.-> Appointments
 ```
 
-Clinic documents are processed ahead of query time. Their embeddings are generated once and stored in a persistent FAISS index together with source metadata.
+The application has three main request paths:
 
-### 🧠 Full RAG Mode
-
-```text
-User
- │
- ▼
-Web Frontend
- │
- ▼
-FastAPI /query
- │
- ▼
-Query Embedding
- │
- ▼
-FAISS Top-K Retrieval
- │
- ▼
-Similarity Filtering
- │
- ▼
-LLM Relevance Validation
- │
- ├──────── Not Relevant ────────┐
- │                              │
- ▼                              ▼
-Relevant                      Abstain
- │                              │
- ▼                              │
-Grounded LLM Generation         │
- │                              │
- └──────────────┬───────────────┘
-                ▼
-         Answer + Sources
-                │
-                ▼
-          Web Interface
-```
-
-### 🔒 Public Demo Mode
-
-```text
-User
- │
- ▼
-Web Frontend
- │
- ▼
-FastAPI /demo/query
- │
- ▼
-Predefined Demo Scenario
- │
- ▼
-Demo Answer + Sources
-```
-
-When public demo mode is enabled:
-
-```text
-POST /demo/query  → Enabled
-POST /query       → 403 Forbidden
-```
-
-The public deployment therefore does not require an OpenAI API key.
+1. 📚 `POST /demo/query` returns a selected fixed FAQ answer without using an LLM.
+2. 💡 `POST /chat` runs Lumi through LangGraph, OpenAI, and the MCP tool layer.
+3. 🔎 `POST /query` preserves the original FAISS RAG pipeline for evaluation and
+   backward compatibility; it is not the default browser experience.
 
 ---
 
-## 🔄 RAG Pipeline
+## 🔌 MCP Servers and Tools
 
-### 📥 1. Document Ingestion
+The agent reads `mcp_config.json`, starts each local server with the active
+Python interpreter, and discovers the tools through the MCP protocol.
 
-Clinic operational information is loaded from the knowledge base before being processed for retrieval.
+| MCP server | Tool | Purpose |
+|---|---|---|
+| `clinic_operations` | `list_doctors` | List the synthetic doctors and their IDs |
+| `clinic_operations` | `get_queue_status` | Return a doctor's queue and optionally estimate a ticket's wait |
+| `clinic_operations` | `get_procedure_status` | Return current procedure status and calculated remaining time |
+| `clinic_operations` | `get_doctor_schedule` | Return a recurring schedule, optionally filtered by weekday |
+| `clinic_knowledge` | `list_knowledge_documents` | List the available public policy documents |
+| `clinic_knowledge` | `search_clinic_knowledge` | Search policy passages using configured semantic FAISS or lexical retrieval |
+| `clinic_knowledge` | `read_knowledge_document` | Read one complete policy document by ID |
+| `clinic_appointments` | `list_available_appointments` | List synthetic slots by doctor and/or date |
+| `clinic_appointments` | `book_appointment` | Reserve a slot and return an anonymous booking reference |
 
-The current prototype includes information about:
-
-- Clinic operating hours
-- Appointment scheduling
-- Cancellation and rescheduling
-- Procedure status
-- Procedure time extensions
-- Waiting queue status
-
-The current document is intentionally limited to non-sensitive operational information.
-
-### ✂️ 2. Paragraph-Level Chunking
-
-The initial implementation grouped multiple paragraphs into larger chunks.
-
-Evaluation revealed that coarse chunks could combine unrelated topics and reduce retrieval precision.
-
-For example, procedure timing information and waiting-status information originally appeared inside the same retrieval chunk.
-
-The pipeline was therefore changed to **paragraph-level chunking**, allowing operational statements to be represented independently.
-
-This changed the knowledge base from:
-
-```text
-4 coarse chunks
-```
-
-to:
-
-```text
-14 paragraph-level chunks
-```
-
-and corrected a retrieval failure identified during evaluation.
-
-### 🧠 3. Embedding Generation
-
-Each document chunk is converted into a semantic vector using the OpenAI embedding API.
-
-The current embedding representation contains **1,536 dimensions**.
-
-Conceptually:
-
-```text
-Clinic Document Chunk
-        │
-        ▼
- OpenAI Embedding
-        │
-        ▼
-Semantic Vector
-```
-
-Incoming user questions are embedded using the same representation so they can be compared against indexed clinic information.
-
-### ⚡ 4. Persistent FAISS Vector Index
-
-Document embeddings are stored in a persistent **FAISS** index.
-
-Instead of regenerating all document embeddings for every question:
-
-```text
-Documents
-   │
-   ▼
-Generate Embeddings Once
-   │
-   ▼
-Persistent FAISS Index
-```
-
-At query time, only the question embedding needs to be generated before similarity search.
-
-Metadata is stored separately so retrieved vectors can be mapped back to:
-
-- Source document
-- Chunk ID
-- Original text
-
-### 🔎 5. Top-K Semantic Retrieval
-
-The user question is converted into an embedding and compared against the FAISS index.
-
-```text
-Question
-   │
-   ▼
-Query Embedding
-   │
-   ▼
-FAISS Similarity Search
-   │
-   ▼
-Top-K Candidate Chunks
-```
-
-The current pipeline uses:
-
-```text
-Top-K = 2
-```
-
-candidate retrieval.
-
-### 🎚️ 6. Similarity Filtering
-
-A minimum similarity threshold is applied to remove weak retrieval candidates.
-
-However, evaluation showed that **semantic similarity alone does not determine whether a passage actually contains enough information to answer a question**.
-
-For example, the unsupported question:
-
-```text
-What is the clinic's phone number?
-```
-
-retrieved general clinic information with a relatively high similarity score even though the knowledge base contained no phone number.
-
-This motivated an additional relevance-validation stage.
-
-### ✅ 7. LLM-Based Relevance Validation
-
-Each retrieved candidate is evaluated by an LLM relevance judge.
-
-```text
-Question
-   +
-Retrieved Passage
-   │
-   ▼
-LLM Relevance Judge
-   │
-   ├── RELEVANT
-   │
-   └── NOT_RELEVANT
-```
-
-A passage is retained only when it directly contains information that helps answer the question.
-
-This stage addresses a limitation of embedding-only retrieval:
-
-```text
-High Semantic Similarity
-          ≠
-Passage Contains the Answer
-```
-
-### 💬 8. Grounded Answer Generation
-
-Only validated context is passed to the generation model.
-
-The model is instructed to answer using the supplied clinic information rather than introducing unsupported policies or details.
-
-If no relevant context remains after validation, the system returns:
-
-```text
-I don't have enough information in the provided clinic documents.
-```
-
-### 🔗 9. Source Attribution
-
-Supported responses include source metadata for the retrieved clinic information.
-
-Example:
-
-```text
-Question:
-What should staff do if a procedure takes longer than expected?
-
-Answer:
-If a procedure takes longer than expected, staff can extend
-the estimated completion time by 15, 30, or 60 minutes.
-
-Source:
-clinic_faq.txt
-Chunk 9
-```
-
-This makes the relationship between the generated answer and the underlying knowledge base visible to the user.
+The system prompt requires clinic-specific claims to come from tool results.
+Knowledge answers cite a `document_id`; operational answers cite the MCP tool.
+When the available data is insufficient, Lumi is instructed to say so rather
+than invent a policy or status.
 
 ---
 
-## 🧪 Retrieval Optimization
+## 🔎 Knowledge and Retrieval
 
-The retrieval system was improved through an **evaluation-driven development process**.
+Public clinic policies are stored as Markdown files in `clinic_knowledge/`:
 
-### 🔍 Initial Retrieval Failure
+- 📅 Appointments and check-in
+- 🕘 Clinic hours
+- ☎️ Contact information
+- 🅿️ Directions and parking
+- 🏥 Procedure status
+- ⏳ Queues and wait times
+- 🚨 Urgent care and emergencies
 
-The original chunking strategy produced four relatively coarse chunks.
+`search_clinic_knowledge` splits these files into paragraphs, creates OpenAI
+embeddings, normalizes the vectors, and stores them in a persistent FAISS
+inner-product index. A content-and-model fingerprint is stored beside the
+index, so it is reused while current and rebuilt when the source documents or
+embedding model change.
 
-One benchmark question asked:
+Set `CLINIC_KNOWLEDGE_SEARCH_MODE=lexical` to use the key-free lexical search
+implementation instead of semantic embeddings.
 
-```text
-What number does the clinic website display?
-```
+### 🧬 Original RAG pipeline
 
-The correct information was:
-
-```text
-The clinic website displays the number currently being seen.
-```
-
-However, the correct passage was not returned within the Top-2 results.
-
-Instead, broader clinic- and website-related passages received higher retrieval rankings.
-
-### 🛠️ Chunking Improvement
-
-The document processing strategy was changed from grouped paragraphs to paragraph-level chunks.
-
-After rebuilding the FAISS index, the same question retrieved:
+The original pipeline under `app/rag/` remains part of the project:
 
 ```text
-Rank 1
-Similarity: 0.8341
-
-The clinic website displays the number currently being seen.
+Document loading → paragraph chunking → OpenAI embeddings → FAISS
+→ Top-K retrieval → similarity filtering → LLM relevance validation
+→ grounded answer with source metadata
 ```
 
-Across the benchmark, Direct Recall@2 improved from:
+The included 30-question benchmark contains 10 direct, 10 paraphrased, and 10
+unanswerable questions. The recorded evaluation after switching from coarse to
+paragraph-level chunks was:
 
-```text
-90% → 100%
-```
-
-while paraphrased-query retrieval remained at 100%.
-
----
-
-## 📊 Evaluation
-
-The system was evaluated using a **curated 30-query benchmark** derived from the clinic knowledge base.
-
-The benchmark contains three categories:
-
-| Category | Questions | Purpose |
-|---|---:|---|
-| Direct | 10 | Questions closely matching document terminology |
-| Paraphrased | 10 | Equivalent questions expressed with different wording |
-| Unanswerable | 10 | Questions whose answers are absent from the knowledge base |
-
-Ground truth is based on expected document content rather than fixed chunk IDs.
-
-This allows the chunking strategy to change without invalidating the evaluation set.
-
----
-
-## 📈 Evaluation Results
-
-### 🔎 Retrieval Performance
-
-After introducing paragraph-level chunking:
-
-| Metric | Result |
+| Metric | Recorded result |
 |---|---:|
-| Direct Query Recall@2 | **100% (10/10)** |
-| Paraphrased Query Recall@2 | **100% (10/10)** |
+| Direct Recall@2 | 100% (10/10) |
+| Paraphrased Recall@2 | 100% (10/10) |
+| Unsupported-query rejection with similarity only | 20% (2/10) |
+| Unsupported-query rejection with LLM validation | 90% (9/10) |
+| Average retrieval and validation latency | 3.53 seconds |
 
-The original coarse-chunk baseline achieved:
-
-```text
-Direct Recall@2 = 90%
-```
-
-After paragraph-level chunking:
-
-```text
-Direct Recall@2 = 100%
-```
-
-### 🛡️ Unsupported-Query Rejection
-
-Similarity filtering alone was not sufficient to reliably distinguish supported from unsupported questions.
-
-At the evaluated similarity threshold:
-
-| Architecture | Unsupported Query Rejection |
-|---|---:|
-| FAISS + similarity filtering | **20% (2/10)** |
-| + LLM relevance validation | **90% (9/10)** |
-
-Adding LLM relevance validation improved unsupported-query rejection from:
-
-```text
-20% → 90%
-```
-
-while maintaining:
-
-```text
-Direct Recall@2       = 100%
-Paraphrased Recall@2  = 100%
-```
-
-### ⏱️ Latency
-
-LLM relevance validation improves grounding but introduces additional inference latency.
-
-Across the 30-query benchmark:
-
-```text
-Average retrieval + validation latency: 3.53 seconds
-```
-
-This creates an explicit system-design trade-off:
-
-```text
-Higher Unsupported-Query Rejection
-                 ↕
-Additional Validation Latency
-```
-
-Potential future optimizations include:
-
-- Smaller relevance models
-- Conditional relevance validation
-- Dedicated reranking models
-- Cached relevance decisions
+These benchmark figures describe the original RAG evaluation dataset, not the
+fixed FAQ endpoint or the synthetic MCP operations data.
 
 ---
 
-## ⚠️ Known Failure Case
+## 🌐 API
 
-The relevance-validation pipeline rejected **9 of 10** unsupported questions.
+Interactive OpenAPI documentation is available locally at
+`http://127.0.0.1:8080/docs` after the application starts.
 
-The remaining failure was:
+| Method and path | Purpose |
+|---|---|
+| `GET /` | Serve the browser interface |
+| `GET /health` | Report service, agent, MCP-server count, and public-chat status |
+| `POST /demo/query` | Return one predefined Clinic FAQ answer |
+| `POST /chat` | Run one session-scoped Lumi turn |
+| `POST /query` | Run the original FAISS RAG pipeline |
 
-```text
-Is the clinic open on weekends?
+Example Lumi request:
+
+```json
+{
+  "query": "What is Dr. Chen's current procedure status?",
+  "session_id": "browser-generated-session-id"
+}
 ```
 
-The knowledge base states that the clinic is open Monday through Friday but does not explicitly state that it is closed on weekends.
+Example response:
 
-The relevance validator treated the weekday schedule as relevant context.
-
-For evaluation purposes, this is considered a failure because the system prioritizes:
-
-```text
-Explicit Document Grounding
+```json
+{
+  "response": "...source-grounded Lumi response..."
+}
 ```
-
-over:
-
-```text
-Implicit Policy Inference
-```
-
-This case demonstrates an important challenge in evaluating answerability for RAG systems.
 
 ---
 
-## 🌐 Web Application
+## 🛡️ Safety, Privacy, and Cost Controls
 
-The RAG pipeline is exposed through a **FastAPI backend** and a lightweight web interface.
+- ✍️ Chat questions are stripped and limited to 1,000 characters.
+- 🪪 Session IDs are stripped and limited to 128 characters.
+- 🚦 Each client IP is limited to 3 `/chat` requests per minute and 10 per UTC
+  day by default.
+- ⏱️ Rate-limit responses use HTTP 429 with `Retry-After` and
+  `X-Rate-Limit-Reason` headers.
+- ↩️ When a limit is reached, the UI offers a user-controlled return to the
+  no-cost Clinic FAQ mode; it does not silently replace an agent answer.
+- 🔒 `PUBLIC_CHAT_ENABLED=false` disables `/chat` with HTTP 403 and hides the
+  **Ask Lumi** control without rebuilding the application.
+- 🧯 Expected model, configuration, and MCP failures return controlled 502/503
+  responses without exposing internal exception details.
+- ⚠️ Unexpected errors return a generic HTTP 500 response.
+- 🕶️ The synthetic public interface stores no patient names, diagnoses, medical
+  record numbers, insurance numbers, or government health-card data.
+- 💳 Provider-side spending limits should remain the final billing safeguard.
 
-### ⚙️ API Endpoints
-
-```text
-GET   /             Web application
-GET   /health       Application health and demo-mode status
-POST  /query        Full RAG query endpoint
-POST  /demo/query   Restricted public demonstration endpoint
-```
-
-Interactive API documentation is available through FastAPI Swagger UI:
-
-[📘 View API Documentation](https://intelligent-clinic-platform--belle16810.replit.app/docs)
-
-### 🎨 Frontend
-
-The frontend is implemented with:
-
-- HTML
-- CSS
-- JavaScript
-
-The interface displays:
-
-- Demo scenarios
-- Selected question
-- Answer
-- Retrieved source
-- Similarity metadata
-- Grounding information
+The rate limiter and LangGraph memory are intentionally in-process for this
+single-instance portfolio application. Their state resets on restart and is
+not shared across multiple workers. A production deployment should use a
+shared store such as Redis or an API gateway.
 
 ---
 
-## 🔒 Secure Public Demo Mode
+## 🕒 Time and Synthetic Data
 
-The application supports two execution modes.
-
-### 🧑‍💻 Local / Private Mode
-
-```text
-DEMO_MODE=false
-```
-
-The full RAG pipeline is available:
-
-```text
-User Question
-      │
-      ▼
-OpenAI Embedding
-      │
-      ▼
-FAISS Retrieval
-      │
-      ▼
-Relevance Validation
-      │
-      ▼
-Grounded Generation
-      │
-      ▼
-Answer + Sources
-```
-
-This mode requires an OpenAI API key.
-
-### 🌍 Public Demo Mode
-
-```text
-DEMO_MODE=true
-```
-
-The public Replit deployment exposes four predefined scenarios:
-
-- Clinic hours
-- Procedure delay
-- Waiting status
-- Unsupported question
-
-The unrestricted endpoint is disabled:
-
-```text
-POST /query
-→ 403 Forbidden
-```
-
-while:
-
-```text
-POST /demo/query
-→ Enabled
-```
-
-The public deployment therefore does **not require an OpenAI API key**.
-
-This design reduces:
-
-- API credential exposure risk
-- Uncontrolled API usage
-- Unexpected inference costs
-- Abuse of the public LLM endpoint
-
-The public demo remains sufficient to demonstrate the application's interface, grounded-response behavior, source attribution, and unsupported-query handling.
+- 🌎 `America/Los_Angeles` is the default clinic timezone.
+- 🌤️ Public timestamps and appointments automatically follow PST/PDT transitions.
+- 🕒 Operational timestamp values are stored in UTC and converted at the MCP
+  boundary.
+- 🔄 Queue and procedure records are synthetic. With
+  `CLINIC_REFRESH_DEMO_DATA=true`, expired demo timestamps are refreshed so the
+  current-status examples remain useful.
+- 📆 Appointment reservations are synthetic and anonymous. Booking consumes the
+  selected demo slot and returns a generated reference such as `APT-XXXXXXXX`.
 
 ---
 
-## 🖥️ Demo Scenarios
+## 🧰 Technology Stack
 
-### 🕐 Clinic Hours
-
-**Question**
-
-```text
-What are the clinic's opening hours?
-```
-
-**Answer**
-
-```text
-The clinic is open Monday through Friday from 9:00 AM to
-12:00 PM and from 2:00 PM to 6:00 PM.
-```
-
-### 🏥 Procedure Delay
-
-**Question**
-
-```text
-What should staff do if a procedure takes longer than expected?
-```
-
-**Answer**
-
-```text
-If a procedure takes longer than expected, staff can extend
-the estimated completion time by 15, 30, or 60 minutes.
-```
-
-### 🔢 Waiting Status
-
-**Question**
-
-```text
-What number does the clinic website display?
-```
-
-**Answer**
-
-```text
-The number currently being seen.
-```
-
-### 🚫 Unsupported Question
-
-**Question**
-
-```text
-What is the clinic's phone number?
-```
-
-**Answer**
-
-```text
-I don't have enough information in the provided clinic documents.
-```
-
-This scenario demonstrates abstention when the required information is absent from the knowledge base.
-
----
-
-## 🧰 Tech Stack
-
-### 🤖 AI / LLM
-
-- OpenAI API
-- Retrieval-Augmented Generation (RAG)
-- Embeddings
-- LLM relevance validation
-
-### 🔎 Retrieval
-
-- FAISS
-- Vector similarity search
-- Top-K retrieval
-- Similarity filtering
-- Persistent vector indexing
-
-### ⚙️ Backend
-
-- Python
-- FastAPI
-- Pydantic
-- REST APIs
-
-### 🎨 Frontend
-
-- HTML
-- CSS
-- JavaScript
-
-### 📊 Evaluation
-
-- Custom 30-query benchmark
-- Recall@2
-- Unsupported-query rejection
-- Latency measurement
-- Retrieval failure analysis
-
-### ☁️ Deployment & Development
-
-- Replit
-- Git
-- GitHub
-- Conda
+- 🐍 **Backend:** Python, FastAPI, Pydantic, Uvicorn
+- 🧠 **Agent:** LangGraph, LangChain MCP adapter, OpenAI API
+- 🔎 **Retrieval:** OpenAI embeddings, FAISS, NumPy
+- 🔌 **Protocol:** Model Context Protocol (MCP)
+- 🗄️ **Storage:** SQLite, Markdown policy documents, persistent FAISS indexes
+- 🎨 **Frontend:** HTML, CSS, JavaScript
+- ✅ **Testing:** Pytest, FastAPI TestClient
+- 🐳 **Deployment:** Docker, Linux-compatible non-root runtime
 
 ---
 
@@ -734,306 +278,247 @@ This scenario demonstrates abstention when the required information is absent fr
 
 ```text
 intelligent-clinic-platform/
-│
 ├── app/
-│   ├── api.py
-│   ├── llm_test.py
-│   │
-│   ├── rag/
-│   │   ├── loader.py
+│   ├── api.py                       # FastAPI routes and fixed FAQ data
+│   ├── models.py                    # Validated chat request/response models
+│   ├── rate_limit.py                # In-memory IP rate limiter
+│   ├── services/
+│   │   └── chat.py                  # LangGraph, OpenAI, MCP, and memory
+│   ├── rag/                         # Original RAG pipeline
 │   │   ├── chunker.py
 │   │   ├── embeddings.py
-│   │   ├── vector_store.py
-│   │   ├── retriever.py
+│   │   ├── loader.py
+│   │   ├── rag.py
 │   │   ├── relevance.py
-│   │   └── rag.py
-│   │
+│   │   ├── retriever.py
+│   │   └── vector_store.py
 │   └── evaluation/
 │       ├── questions.json
-│       ├── evaluate_retrieval.py
-│       └── evaluate_rag.py
-│
+│       ├── evaluate_rag.py
+│       └── evaluate_retrieval.py
+├── mcp_servers/
+│   ├── clinic_operations/
+│   │   ├── database.py
+│   │   └── server.py
+│   ├── clinic_knowledge/
+│   │   └── server.py
+│   ├── clinic_appointments/
+│   │   ├── database.py
+│   │   └── server.py
+│   └── clinic_time.py
+├── clinic_knowledge/                # Seven public policy documents
 ├── data/
-│   └── clinic_faq.txt
-│
-├── images/
-│   ├── web_demo.png
-│   └── system_architecture.png
-│
+│   └── clinic_faq.txt               # Original RAG evaluation corpus
 ├── static/
 │   ├── index.html
 │   ├── style.css
 │   └── app.js
-│
-├── requirements.txt
+├── tests/                           # 58 automated tests
+├── images/                          # README screenshots
+├── .dockerignore
+├── .env.example
 ├── .gitignore
+├── Dockerfile
+├── main.py                          # Port 8080 application entry point
+├── mcp_config.json                  # Three local MCP server definitions
+├── requirements.txt
 └── README.md
 ```
 
-Generated vector-store artifacts, API credentials, and local environment files are excluded from version control.
+Generated SQLite databases, FAISS indexes, credentials, virtual environments,
+and local cache files are excluded from version control.
 
 ---
 
 ## 🚀 Local Setup
 
-### 📥 1. Clone the Repository
+### 🐍 1. Create and activate the environment
 
-```bash
-git clone https://github.com/beelleed/intelligent-clinic-platform.git
-cd intelligent-clinic-platform
-```
+From Anaconda Prompt on Windows:
 
-### 🐍 2. Create a Python Environment
-
-Using Conda:
-
-```bash
+```cmd
 conda create -p ./env python=3.12
 conda activate ./env
 ```
 
-Alternatively, use another Python virtual environment.
+### 📦 2. Install dependencies
 
-### 📦 3. Install Dependencies
-
-```bash
-pip install -r requirements.txt
+```cmd
+python -m pip install -r requirements.txt
 ```
 
-### 🔑 4. Configure the OpenAI API Key
+### 🔑 3. Configure the application
 
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env`, then set at least:
 
 ```text
-OPENAI_API_KEY=your_api_key_here
+OPENAI_API_KEY=your_key_here
+OPENAI_MODEL=gpt-5
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 ```
 
-The `.env` file is excluded from version control through `.gitignore`.
+Never commit `.env` or an API key.
 
-Never commit API credentials to Git.
+### ▶️ 4. Start the application
 
-### 🧠 5. Build the Vector Store
-
-```bash
-python -m app.rag.vector_store
-```
-
-This process:
-
-1. Loads the clinic knowledge document.
-2. Creates paragraph-level chunks.
-3. Generates embeddings.
-4. Builds the FAISS index.
-5. Stores vector metadata locally.
-
-### ▶️ 6. Start the Application
-
-```bash
-python -m uvicorn app.api:app --reload
+```cmd
+python main.py
 ```
 
 Open:
 
-```text
-http://127.0.0.1:8000/
-```
+- 🌐 Application: `http://127.0.0.1:8080`
+- 📘 API documentation: `http://127.0.0.1:8080/docs`
+- 💚 Health check: `http://127.0.0.1:8080/health`
 
-FastAPI Swagger documentation:
+The terminal displays `http://0.0.0.0:8080` because the server listens on all
+local interfaces. `0.0.0.0` is a bind address; use `127.0.0.1` or `localhost`
+in the browser.
 
-```text
-http://127.0.0.1:8000/docs
-```
+`APP_RELOAD=true` is the local default. Set it to `false` when automatic reload
+is not wanted.
 
 ---
 
-## 🧪 Running Evaluation
+## ⚙️ Configuration
 
-### 🔎 Retrieval Evaluation
+| Variable | Default | Purpose |
+|---|---|---|
+| `OPENAI_API_KEY` | none | Required for Lumi and semantic embedding calls |
+| `OPENAI_MODEL` | `gpt-5` | Lumi chat model |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Semantic index model |
+| `OPENAI_BASE_URL` | empty | Optional compatible API base URL |
+| `PUBLIC_CHAT_ENABLED` | `true` | Show and enable Lumi chat |
+| `CHAT_RATE_LIMIT_PER_MINUTE` | `3` | Per-IP rolling-minute chat limit |
+| `CHAT_RATE_LIMIT_PER_DAY` | `10` | Per-IP UTC-day chat limit |
+| `MCP_SERVERS_CONFIG` | `mcp_config.json` | MCP server configuration path |
+| `CLINIC_DB_PATH` | `data/clinic_operations.db` | Operations SQLite path |
+| `CLINIC_REFRESH_DEMO_DATA` | `true` | Refresh expired synthetic procedure times |
+| `CLINIC_TIMEZONE` | `America/Los_Angeles` | Public clinic timezone |
+| `CLINIC_APPOINTMENTS_DB_PATH` | `data/clinic_appointments.db` | Appointment SQLite path |
+| `CLINIC_KNOWLEDGE_DIR` | `clinic_knowledge` | Policy document directory |
+| `CLINIC_KNOWLEDGE_INDEX_DIR` | `data` | Persistent knowledge-index directory |
+| `CLINIC_KNOWLEDGE_SEARCH_MODE` | `semantic` | `semantic` or key-free `lexical` search |
+| `DEMO_MODE` | `false` | Disable only the legacy `/query` endpoint |
+| `APP_RELOAD` | `true` locally | Enable Uvicorn reload in `main.py` |
+| `PORT` | `8080` | HTTP port |
 
-```bash
-python -m app.evaluation.evaluate_retrieval
+### 🔒 FAQ-only mode
+
+To expose only the fixed FAQ interface without Lumi/OpenAI chat:
+
+```cmd
+set PUBLIC_CHAT_ENABLED=false
+python main.py
 ```
 
-This evaluates semantic retrieval behavior across the curated benchmark.
+`POST /demo/query` remains available and `POST /chat` returns HTTP 403.
 
-### ✅ Relevance Validation Evaluation
+---
+
+## 🐳 Docker
+
+Build the image:
 
 ```bash
+docker build -t intelligent-clinic-assistant .
+```
+
+Run it with environment configuration:
+
+```bash
+docker run --rm -p 8080:8080 --env-file .env intelligent-clinic-assistant
+```
+
+The Dockerfile uses separate builder and runtime stages, runs as a non-root
+user, disables application reload, and exposes port 8080.
+
+### ☁️ Cloud Run deployment settings
+
+For this single-instance portfolio demo, deploy with scale-to-zero and at most
+one instance so the in-memory request limits and session memory stay as
+consistent as possible:
+
+```bash
+gcloud run deploy intelligent-clinic-assistant \
+  --source . \
+  --region us-west1 \
+  --allow-unauthenticated \
+  --min-instances 0 \
+  --max-instances 1 \
+  --set-env-vars PUBLIC_CHAT_ENABLED=true,CHAT_RATE_LIMIT_PER_MINUTE=3,CHAT_RATE_LIMIT_PER_DAY=10,APP_RELOAD=false
+```
+
+Store `OPENAI_API_KEY` in Google Secret Manager and attach it to the Cloud Run
+service rather than passing the key in the command or committing it to Git.
+
+---
+
+## ✅ Tests
+
+Run the full suite from the activated environment:
+
+```cmd
+python -m pytest -q
+```
+
+If the system temporary directory is restricted, keep pytest's temporary data
+inside the project:
+
+```cmd
+python -m pytest -q --basetemp=.pytest-tmp
+```
+
+Current verified result:
+
+```text
+58 passed
+```
+
+The suite tests:
+
+- 🌐 FastAPI routes and frontend contracts
+- ✍️ Request and session validation
+- 📚 FAQ-only and public-chat behavior
+- 🚦 Per-minute and daily rate limits
+- 🧯 Safe model, MCP, and unexpected-error responses
+- 🔌 MCP discovery and multi-tool agent execution
+- 🧠 Session memory and session isolation
+- 🧩 All three MCP servers and their typed schemas
+- 🔎 Semantic FAISS retrieval and document attribution
+- 🕒 Synthetic data refresh and Pacific Time conversion
+- 🐳 Docker and `.dockerignore` safety requirements
+
+The LangChain MCP adapter currently emits a beta API warning during tests; this
+does not cause a test failure.
+
+---
+
+## 📊 Evaluation Commands
+
+The original RAG evaluation requires an OpenAI API key and a built vector
+store:
+
+```cmd
+python -m app.rag.vector_store
+python -m app.evaluation.evaluate_retrieval
 python -m app.evaluation.evaluate_rag
 ```
 
-This evaluates:
-
-- Direct-query retrieval
-- Paraphrased-query retrieval
-- Unsupported-query rejection
-- Retrieval + relevance-validation latency
-
 ---
 
-## 🔐 Running Public Demo Mode Locally
+## 🏥 Current Scope and Production Considerations
 
-### Windows CMD / Anaconda Prompt
+This repository is a working portfolio prototype, not a production medical
+system. A production deployment would additionally require:
 
-```cmd
-set DEMO_MODE=true
-python -m uvicorn app.api:app --reload
-```
-
-### PowerShell
-
-```powershell
-$env:DEMO_MODE="true"
-python -m uvicorn app.api:app --reload
-```
-
-In demo mode:
-
-```text
-POST /demo/query → Enabled
-POST /query      → 403 Forbidden
-```
-
-No OpenAI API key is required for the predefined demo scenarios.
-
----
-
-## 🌍 Live Demo
-
-The restricted public demo is deployed on Replit.
-
-🌐 **Live Application**  
-https://intelligent-clinic-platform--belle16810.replit.app/
-
-📘 **FastAPI Documentation**  
-https://intelligent-clinic-platform--belle16810.replit.app/docs
-
-The public deployment operates with:
-
-```text
-DEMO_MODE=true
-```
-
-and does not expose an OpenAI API credential.
-
----
-
-## 🧭 Technical Decisions
-
-### 📄 Why Paragraph-Level Chunking?
-
-Initial evaluation showed that larger chunks mixed unrelated clinic topics and caused retrieval failures.
-
-Paragraph-level chunks improved retrieval granularity and increased Direct Recall@2 from:
-
-```text
-90% → 100%
-```
-
-on the curated benchmark.
-
-### ⚡ Why FAISS?
-
-FAISS provides efficient local vector similarity search without requiring an external managed vector database.
-
-For the current prototype, it provides:
-
-- Fast local retrieval
-- Persistent vector indexing
-- Straightforward embedding integration
-- Minimal infrastructure overhead
-
-A managed vector database could be introduced later if the system requires larger-scale document collections, distributed storage, or production metadata filtering.
-
-### ✅ Why LLM Relevance Validation?
-
-Embedding similarity measures semantic closeness but does not guarantee that a retrieved passage contains enough information to answer the question.
-
-Evaluation showed that unsupported questions could still receive high similarity scores.
-
-The relevance-validation layer improved unsupported-query rejection from:
-
-```text
-20% → 90%
-```
-
-while preserving retrieval recall on the direct and paraphrased benchmark queries.
-
-### 🔒 Why Restricted Public Demo Mode?
-
-The complete application uses external LLM APIs.
-
-An unrestricted public inference endpoint could allow anonymous users to consume API credits or abuse the service.
-
-The public deployment therefore:
-
-- Uses predefined scenarios
-- Disables unrestricted `/query` requests
-- Does not require an OpenAI API credential
-- Preserves the complete RAG implementation for local/private execution
-
-This separates **technical demonstration** from **unrestricted public inference access**.
-
----
-
-## 🗺️ Future Work
-
-The current version focuses on the **AI knowledge-management layer**.
-
-Planned extensions include:
-
-- 📅 Online appointment scheduling
-- 🔢 Real-time consultation queue tracking
-- 🏥 Procedure status updates
-- ⏱️ Procedure ETA extensions for clinic staff
-- 👩‍⚕️ Staff operations dashboard
-- 🔐 Authentication and role-based access control
-- 📚 Multi-document clinic knowledge ingestion
-- 🔄 Automatic vector-index updates when documents change
-- 🧠 Retrieval reranking
-- ⚡ Lower-latency relevance validation
-- ☁️ Production-ready managed vector storage
-- 📊 Expanded retrieval and generation evaluation
-
-These components would extend the project from a clinic knowledge assistant into a broader **AI-powered clinic operations platform**.
-
----
-
-## 📌 Project Status
-
-```text
-RAG Core                         ✅
-Document Ingestion               ✅
-Paragraph-Level Chunking         ✅
-OpenAI Embeddings                ✅
-Persistent FAISS Index           ✅
-Top-K Retrieval                  ✅
-Similarity Filtering             ✅
-LLM Relevance Validation         ✅
-Grounded Generation              ✅
-Source Attribution               ✅
-30-Query Evaluation              ✅
-FastAPI Backend                  ✅
-Interactive Web Interface        ✅
-Restricted Public Demo Mode      ✅
-Public Replit Deployment         ✅
-Clinic Operations Features       🚧
-```
-
----
-
-## 📚 What I Learned
-
-This project provided hands-on experience with practical RAG and AI application engineering challenges:
-
-- Retrieval quality depends heavily on document chunking strategy.
-- High embedding similarity does not guarantee answerability.
-- Evaluation should include both answerable and unanswerable queries.
-- Retrieval changes should be validated quantitatively rather than selected only through manual testing.
-- LLM-based relevance validation can improve grounding while introducing additional latency.
-- Source attribution improves response traceability.
-- Public LLM applications require explicit credential, cost, and endpoint-abuse controls.
-- Separating ingestion, retrieval, validation, generation, API, and presentation layers makes the system easier to evaluate and extend.
+- 🔐 Authenticated clinic integrations instead of synthetic SQLite data
+- 🧾 Authorization and audit logging
+- 🔒 Encrypted persistent storage and formal data-retention rules
+- 🌐 A distributed rate limiter and shared conversation store
+- 📅 Appointment cancellation and identity-verification workflows
+- 📈 Monitoring, alerting, and model/tool quality evaluation
+- ⚖️ Clinical, privacy, legal, and security review
 
 ---
 
@@ -1042,4 +527,6 @@ This project provided hands-on experience with practical RAG and AI application 
 **Belle Dai**  
 M.S. Computer Science, University of Southern California
 
-Built as an independent project exploring practical **LLM, RAG, retrieval evaluation, and AI application engineering**.
+Built as an independent project exploring practical **LLM agents, RAG,
+LangGraph, MCP, retrieval evaluation, API safety, and AI application
+engineering**.

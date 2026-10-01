@@ -2,103 +2,148 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
+        name="description"
+        content="A tool-using clinic operations agent powered by LangGraph and MCP."
     >
-
-    <title>Clinic Knowledge Assistant</title>
-
-    <link
-        rel="stylesheet"
-        href="/static/style.css"
-    >
+    <title>Intelligent Clinic Assistant</title>
+    <link rel="stylesheet" href="/static/style.css?v=20260930-10">
 </head>
-
 <body>
     <div class="page">
         <header class="hero">
-            <div class="badge">
-                AI-POWERED CLINIC ASSISTANT
-            </div>
-
-            <h1>
-                Clinic Knowledge Assistant
-            </h1>
-
+            <div class="badge">AI-POWERED CLINIC OPERATIONS</div>
+            <h1>Intelligent Clinic Assistant</h1>
             <p class="subtitle">
-                Get grounded answers from verified clinic
-                operational documents.
+                Browse clinic FAQs or ask Lumi about synthetic queue status,
+                procedure estimates, doctor schedules, and anonymous appointments.
             </p>
         </header>
 
         <main>
-            <section class="card">
+            <section class="card" aria-labelledby="chat-heading">
                 <div class="section-header">
                     <div>
-                        <h2>Try a demo</h2>
-                        <p>
-                            Explore four example scenarios from the clinic knowledge base.
+                        <h2 id="chat-heading">Browse clinic FAQs</h2>
+                        <p id="mode-description">
+                            Explore ten basic clinic FAQs below. Current operational
+                            information is available through Lumi.
                         </p>
+                    </div>
+                    <div class="header-actions">
+                        <button
+                            id="demo-mode-button"
+                            class="secondary-button"
+                            type="button"
+                        >Ask Lumi</button>
+                        <button
+                            id="reset-button"
+                            class="secondary-button hidden"
+                            type="button"
+                        >New conversation</button>
                     </div>
                 </div>
 
-                <div class="demo-buttons">
+                <div id="mode-notice" class="mode-notice" role="status">
+                    <strong>Clinic FAQ mode</strong>
+                    <span>
+                        Choose a basic clinic FAQ below. FAQ mode does not show
+                        current queue, procedure, schedule, or appointment status,
+                        and it does not use Lumi or consume agent request quota.
+                    </span>
+                </div>
+
+                <div id="session-strip" class="session-strip hidden">
+                    <span class="status-dot" aria-hidden="true"></span>
+                    <span>Session</span>
+                    <code id="session-id"></code>
+                </div>
+
+                <div class="demo-buttons" aria-label="Example questions">
                     <button
                         class="example-button"
+                        type="button"
                         data-demo-id="clinic-hours"
                         data-question="What are the clinic's opening hours?"
-                    >
-                        Clinic hours
-                    </button>
-
+                    >Clinic hours</button>
                     <button
                         class="example-button"
-                        data-demo-id="surgery-delay"
-                        data-question="What should staff do if a procedure takes longer than expected?"
-                    >
-                        Surgery delay
-                    </button>
-
+                        type="button"
+                        data-demo-id="parking"
+                        data-question="Does the clinic have visitor parking?"
+                    >Parking</button>
                     <button
                         class="example-button"
-                        data-demo-id="waiting-status"
-                        data-question="What number does the clinic website display?"
-                    >
-                        Waiting status
-                    </button>
-
+                        type="button"
+                        data-demo-id="check-in-and-late-arrival"
+                        data-question="How early should I arrive, and what happens if I am late?"
+                    >Check-in &amp; late arrival</button>
                     <button
                         class="example-button"
-                        data-demo-id="unsupported"
+                        type="button"
+                        data-demo-id="cancel-or-reschedule"
+                        data-question="How do I cancel or reschedule an appointment?"
+                    >Cancel or reschedule</button>
+                    <button
+                        class="example-button"
+                        type="button"
+                        data-demo-id="appointment-requests"
+                        data-question="How do online appointment requests work?"
+                    >Appointment requests</button>
+                    <button
+                        class="example-button"
+                        type="button"
+                        data-demo-id="wait-time-estimates"
+                        data-question="Are clinic wait-time estimates guaranteed?"
+                    >Wait-time estimates</button>
+                    <button
+                        class="example-button"
+                        type="button"
+                        data-demo-id="procedure-status-information"
+                        data-question="What do the procedure status labels mean?"
+                    >Procedure status info</button>
+                    <button
+                        class="example-button"
+                        type="button"
+                        data-demo-id="public-information-privacy"
+                        data-question="What information is shown on the public queue display?"
+                    >Privacy</button>
+                    <button
+                        class="example-button"
+                        type="button"
+                        data-demo-id="urgent-care"
+                        data-question="Can I use this website for urgent medical help?"
+                    >Urgent help</button>
+                    <button
+                        class="example-button"
+                        type="button"
+                        data-demo-id="contact-information"
                         data-question="What is the clinic's phone number?"
-                    >
-                        Unsupported question
-                    </button>
+                    >Contact information</button>
                 </div>
 
-                <div class="question-label">
-                    Selected question
-                </div>
-
-                <textarea
-                    id="question"
-                    rows="4"
-                    readonly
-                    placeholder="Choose a demo above..."
-                ></textarea>
+                <form id="chat-form" class="hidden">
+                    <label class="question-label" for="question">Your question</label>
+                    <textarea
+                        id="question"
+                        rows="4"
+                        required
+                        placeholder="Ask a question or choose an example above..."
+                    ></textarea>
+                    <div class="actions">
+                        <button id="ask-button" type="submit">Ask Lumi</button>
+                        <span class="keyboard-hint">Ctrl + Enter to send</span>
+                    </div>
+                </form>
             </section>
 
-            <section
-                id="loading"
-                class="card loading hidden"
-            >
-                <div class="spinner"></div>
+            <section id="loading" class="card loading hidden" aria-live="polite">
+                <div class="spinner" aria-hidden="true"></div>
                 <div>
-                    <strong>Searching clinic knowledge...</strong>
-                    <p>
-                        Retrieving relevant information and validating
-                        the context.
+                    <strong id="loading-title">Loading FAQ response...</strong>
+                    <p id="loading-description">
+                        Retrieving a predefined clinic FAQ response.
                     </p>
                 </div>
             </section>
@@ -106,72 +151,61 @@
             <section
                 id="answer-section"
                 class="card hidden"
+                aria-labelledby="answer-heading"
+                aria-live="polite"
             >
-                <div class="result-label">
-                    ANSWER
+                <div id="demo-question-group" class="demo-question-group hidden">
+                    <div class="result-label">FAQ QUESTION</div>
+                    <div id="demo-question" class="demo-question"></div>
                 </div>
-
-                <div
-                    id="answer"
-                    class="answer"
-                ></div>
-
-                <div class="source-header">
-                    <div class="result-label">
-                        SOURCES
-                    </div>
-                </div>
-
-                <div id="sources"></div>
-
-                <div class="grounding-note">
-                    ✓ Answer generated from retrieved clinic documents
+                <div id="answer-heading" class="result-label">FAQ ANSWER</div>
+                <div id="answer" class="answer"></div>
+                <div id="grounding-note" class="grounding-note">
+                    Sample clinic FAQ information only. These answers do not provide medical advice.
                 </div>
             </section>
 
-            <section
-                id="error-section"
-                class="card error hidden"
-            >
+            <section id="error-section" class="card error hidden" aria-live="assertive">
                 <strong>Unable to process the request.</strong>
                 <p id="error-message"></p>
+                <button
+                    id="demo-fallback-button"
+                    class="secondary-button hidden"
+                    type="button"
+                >Continue with clinic FAQs</button>
             </section>
 
-            <section class="info-grid">
-                <div class="info-card">
-                    <h3>RAG Retrieval</h3>
+            <section class="info-grid" aria-label="System capabilities">
+                <article class="info-card">
+                    <h3>MCP Tools</h3>
                     <p>
-                        Semantic search retrieves relevant clinic
-                        information before generating an answer.
+                        Nine tools provide clinic operations, policy knowledge,
+                        and anonymous appointment capabilities.
                     </p>
-                </div>
-
-                <div class="info-card">
-                    <h3>Grounded Responses</h3>
+                </article>
+                <article class="info-card">
+                    <h3>Session Memory</h3>
                     <p>
-                        Unsupported questions are rejected instead of
-                        inventing clinic information.
+                        LangGraph keeps conversational context isolated by the
+                        session identifier shown above.
                     </p>
-                </div>
-
-                <div class="info-card">
-                    <h3>Source Attribution</h3>
+                </article>
+                <article class="info-card">
+                    <h3>Privacy by Design</h3>
                     <p>
-                        Retrieved document sources are shown with
-                        each supported response.
+                        The prototype uses synthetic public data and stores no
+                        patient names, insurance numbers, or medical records.
                     </p>
-                </div>
+                </article>
             </section>
         </main>
 
         <footer>
-            <p>
-                Prototype for clinic knowledge management and
-                operations.
-            </p>
+            <p>Intelligent clinic operations and knowledge prototype</p>
+            <p><a href="/docs">API documentation</a> · <a href="/health">Health check</a></p>
         </footer>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=20260930-10"></script>
 </body>
 </html>
