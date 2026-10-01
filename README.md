@@ -4,6 +4,8 @@ A portfolio-ready clinic operations and knowledge assistant built with
 **FastAPI, LangGraph, Model Context Protocol (MCP), OpenAI, FAISS, SQLite, and
 JavaScript**.
 
+🌐 **Live site:** [Intelligent Clinic Assistant](https://intelligent-clinic-assistant-939611494549.us-west1.run.app)
+
 The browser opens in a no-cost **Clinic FAQ mode**. Visitors can optionally
 switch to **Lumi**, a virtual clinic guide that uses a LangGraph agent to select
 from nine tools exposed by three MCP servers. Lumi can answer source-grounded
@@ -67,8 +69,8 @@ The example above combines live synthetic procedure status from
 ### 🧠 Dynamic status and session memory
 
 <p align="center">
-  <img src="images/lumi_procedure_initial.png" width="49%" alt="Initial Lumi procedure-status response">
-  <img src="images/lumi_procedure_followup.png" width="49%" alt="Follow-up Lumi response using session memory">
+  <img src="images/lumi_procedure_initial.png" width="380" height="528" alt="Initial Lumi procedure-status response">
+  <img src="images/lumi_procedure_followup.png" width="380" height="528" alt="Follow-up Lumi response using session memory">
 </p>
 
 The follow-up asks only to check again. Lumi retains the doctor and procedure
@@ -457,24 +459,24 @@ user, disables application reload, and exposes port 8080.
 
 ### ☁️ Cloud Run deployment settings
 
-For this single-instance portfolio demo, deploy with scale-to-zero and at most
-one instance so the in-memory request limits and session memory stay as
-consistent as possible:
+The live portfolio site runs in `us-west1`. Deploy from this repository's
+`Dockerfile` with scale-to-zero and at most one instance so the in-memory
+request limits and session memory stay as consistent as possible. Start with
+the FAQ-only mode; the deployment command contains no API key:
 
-```bash
-gcloud run deploy intelligent-clinic-assistant \
-  --source . \
-  --region us-west1 \
-  --allow-unauthenticated \
-  --min-instances 0 \
-  --max-instances 1 \
-  --concurrency 1 \
-  --set-secrets OPENAI_API_KEY=YOUR_SECRET_NAME:latest \
-  --set-env-vars PUBLIC_CHAT_ENABLED=true,CHAT_RATE_LIMIT_PER_MINUTE=3,CHAT_RATE_LIMIT_PER_DAY=10,APP_RELOAD=false
+```cmd
+gcloud run deploy intelligent-clinic-assistant --source . --region us-west1 --allow-unauthenticated --min-instances 0 --max-instances 1 --concurrency 1 --memory 1Gi --set-env-vars PUBLIC_CHAT_ENABLED=false,CHAT_RATE_LIMIT_PER_MINUTE=3,CHAT_RATE_LIMIT_PER_DAY=10,APP_RELOAD=false
 ```
 
-Create the secret in Google Secret Manager first and replace `YOUR_SECRET_NAME`
-with its name. Never put the API key itself in the command or commit it to Git.
+To enable Lumi after the initial deployment, open the service in the Cloud Run
+console. Under **Containers → Variables & Secrets**, add the server-side
+`OPENAI_API_KEY` environment variable and change `PUBLIC_CHAT_ENABLED` to
+`true`, then deploy a new revision. Keep the key out of command lines, Git,
+browser-side code, and screenshots. Secret Manager is recommended for stronger
+secret handling, but is not required for this portfolio deployment. The command
+above is for the initial FAQ-only deployment; running it again would turn Lumi
+off and replace the service's existing environment variables.
+
 Cloud Run's local filesystem is ephemeral: generated SQLite data and FAISS
 indexes are recreated after an instance stops. This is suitable for the
 synthetic portfolio demo, but reservations and conversation history do not
