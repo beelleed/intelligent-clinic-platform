@@ -46,8 +46,11 @@ class QueueStatus(BaseModel):
     updated_at: str
     timezone: str
     patient_number: int | None = None
+    ticket_issued: bool | None = None
     patients_ahead: int | None = None
     estimated_wait_minutes: int | None = None
+    hypothetical_queue_positions: int | None = None
+    hypothetical_wait_minutes: int | None = None
     already_called: bool | None = None
 
 
@@ -59,6 +62,7 @@ class ProcedureStatus(BaseModel):
     started_at: str | None
     estimated_end_at: str | None
     estimated_remaining_minutes: int | None
+    completion_estimate_notice: str | None
     updated_at: str
     timezone: str
 
@@ -141,24 +145,36 @@ def get_queue_status(
     }
 
     if patient_number is not None:
-        patients_ahead = max(patient_number - queue["current_number"], 0)
-        result.update(
-            {
-                "patient_number": patient_number,
-                "patients_ahead": patients_ahead,
-                "estimated_wait_minutes": (
-                    patients_ahead * queue["average_visit_minutes"]
-                ),
-                "already_called": patient_number <= queue["current_number"],
-            }
-        )
+        ticket_issued = patient_number <= queue["last_issued_number"]
+        result["patient_number"] = patient_number
+        result["ticket_issued"] = ticket_issued
+        queue_positions = max(patient_number - queue["current_number"], 0)
+        if ticket_issued:
+            result.update(
+                {
+                    "patients_ahead": queue_positions,
+                    "estimated_wait_minutes": (
+                        queue_positions * queue["average_visit_minutes"]
+                    ),
+                    "already_called": patient_number <= queue["current_number"],
+                }
+            )
+        else:
+            result.update(
+                {
+                    "hypothetical_queue_positions": queue_positions,
+                    "hypothetical_wait_minutes": (
+                        queue_positions * queue["average_visit_minutes"]
+                    ),
+                }
+            )
 
     return QueueStatus(**result)
 
 
 @mcp.tool()
 def get_procedure_status(doctor_id: str) -> ProcedureStatus:
-    """Get a doctor's latest operating-room status and estimated remaining time."""
+    """Get a doctor's procedure status, remaining time, and estimate notice."""
     with closing(connect()) as connection:
         doctor = _get_doctor(connection, doctor_id)
         procedure = connection.execute(
@@ -194,6 +210,11 @@ def get_procedure_status(doctor_id: str) -> ProcedureStatus:
         "started_at": to_clinic_iso(procedure["started_at"]),
         "estimated_end_at": to_clinic_iso(procedure["estimated_end_at"]),
         "estimated_remaining_minutes": remaining_minutes,
+        "completion_estimate_notice": (
+            "Procedure completion estimates are not guaranteed; the actual "
+            "end time can change as the procedure progresses."
+            if procedure["estimated_end_at"] else None
+        ),
         "updated_at": to_clinic_iso(procedure["updated_at"]),
         "timezone": clinic_timezone_name(),
     })

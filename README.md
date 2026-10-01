@@ -22,6 +22,7 @@ context within the browser session.
 - 📚 FAQ-first interface with ten fixed, source-attributed clinic answers
 - 💡 Lumi virtual clinic guide with free-form, multi-turn conversation
 - 🧠 LangGraph agent with session-scoped memory and multi-tool chaining
+- ⚡ Persistent per-instance MCP connections and a reusable compiled agent graph
 - 🔌 Three MCP servers exposing nine typed tools
 - 🔎 OpenAI-powered semantic retrieval over a persistent FAISS index
 - 🗄️ Synthetic queue, procedure, schedule, and appointment data in SQLite
@@ -30,7 +31,7 @@ context within the browser session.
 - 🛡️ Input validation, IP rate limiting, safe errors, and a public chat switch
 - 📊 Original RAG pipeline and 30-query retrieval evaluation retained
 - 🐳 Multi-stage, non-root Docker image
-- ✅ 58 automated tests covering the API, MCP integration, retrieval, memory,
+- ✅ 62 automated tests covering the API, MCP integration, retrieval, memory,
   validation, rate limits, failure handling, and container files
 
 ---
@@ -115,6 +116,12 @@ The application has three main request paths:
 3. 🔎 `POST /query` preserves the original FAISS RAG pipeline for evaluation and
    backward compatibility; it is not the default browser experience.
 
+FastAPI initializes the three MCP connections and compiles the LangGraph agent
+once during the application lifespan. Later Lumi turns reuse that warm runtime
+instead of starting and rediscovering all three MCP servers for every request.
+Agent turns are serialized within an instance so connected stdio MCP sessions
+cannot mix request context.
+
 ---
 
 ## 🔌 MCP Servers and Tools
@@ -126,7 +133,7 @@ Python interpreter, and discovers the tools through the MCP protocol.
 |---|---|---|
 | `clinic_operations` | `list_doctors` | List the synthetic doctors and their IDs |
 | `clinic_operations` | `get_queue_status` | Return a doctor's queue and optionally estimate a ticket's wait |
-| `clinic_operations` | `get_procedure_status` | Return current procedure status and calculated remaining time |
+| `clinic_operations` | `get_procedure_status` | Return procedure status, calculated remaining time, and the estimate disclaimer |
 | `clinic_operations` | `get_doctor_schedule` | Return a recurring schedule, optionally filtered by weekday |
 | `clinic_knowledge` | `list_knowledge_documents` | List the available public policy documents |
 | `clinic_knowledge` | `search_clinic_knowledge` | Search policy passages using configured semantic FAISS or lexical retrieval |
@@ -135,9 +142,22 @@ Python interpreter, and discovers the tools through the MCP protocol.
 | `clinic_appointments` | `book_appointment` | Reserve a slot and return an anonymous booking reference |
 
 The system prompt requires clinic-specific claims to come from tool results.
-Knowledge answers cite a `document_id`; operational answers cite the MCP tool.
-When the available data is insufficient, Lumi is instructed to say so rather
-than invent a policy or status.
+The API appends citations from successful tools used in the current turn and
+document IDs returned by knowledge tools. When the available data is
+insufficient, Lumi is instructed to say so rather than invent a policy or
+status.
+
+Operational data is synthetic SQLite seed data. Dr. Lee initially serves ticket
+18, has issued tickets through 24, and averages 12 minutes per visit. For an
+unissued ticket such as 28, the tool labels the 120-minute calculation as a
+hypothetical projection, not an actual queue position or wait estimate. Dr.
+Chen's sample procedure is initially set to start 30 minutes before the
+database is seeded and to end 45 minutes afterward. After that estimated end
+passes, the next database read resets its sample start/end to 30 minutes before
+and 45 minutes after that read.
+Queue timestamps refresh on reads, but queue numbers do not automatically
+advance. These timestamps and estimates demonstrate changing data; they are
+not connected to a real clinic or live staff updates.
 
 ---
 
@@ -313,7 +333,7 @@ intelligent-clinic-platform/
 │   ├── index.html
 │   ├── style.css
 │   └── app.js
-├── tests/                           # 58 automated tests
+├── tests/                           # 62 automated tests
 ├── images/                          # README screenshots
 ├── .dockerignore
 ├── .env.example
@@ -353,7 +373,8 @@ Copy `.env.example` to `.env`, then set at least:
 
 ```text
 OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-5
+OPENAI_MODEL=gpt-5-nano
+OPENAI_REASONING_EFFORT=minimal
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 ```
 
@@ -385,7 +406,8 @@ is not wanted.
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENAI_API_KEY` | none | Required for Lumi and semantic embedding calls |
-| `OPENAI_MODEL` | `gpt-5` | Lumi chat model |
+| `OPENAI_MODEL` | `gpt-5-nano` | Lumi chat model |
+| `OPENAI_REASONING_EFFORT` | `minimal` | Reduce reasoning-token cost and latency for focused tool calls |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Semantic index model |
 | `OPENAI_BASE_URL` | empty | Optional compatible API base URL |
 | `PUBLIC_CHAT_ENABLED` | `true` | Show and enable Lumi chat |
@@ -446,33 +468,36 @@ gcloud run deploy intelligent-clinic-assistant \
   --allow-unauthenticated \
   --min-instances 0 \
   --max-instances 1 \
+  --concurrency 1 \
+  --set-secrets OPENAI_API_KEY=YOUR_SECRET_NAME:latest \
   --set-env-vars PUBLIC_CHAT_ENABLED=true,CHAT_RATE_LIMIT_PER_MINUTE=3,CHAT_RATE_LIMIT_PER_DAY=10,APP_RELOAD=false
 ```
 
-Store `OPENAI_API_KEY` in Google Secret Manager and attach it to the Cloud Run
-service rather than passing the key in the command or committing it to Git.
+Create the secret in Google Secret Manager first and replace `YOUR_SECRET_NAME`
+with its name. Never put the API key itself in the command or commit it to Git.
+Cloud Run's local filesystem is ephemeral: generated SQLite data and FAISS
+indexes are recreated after an instance stops. This is suitable for the
+synthetic portfolio demo, but reservations and conversation history do not
+persist across restarts.
 
 ---
 
 ## ✅ Tests
 
-Run the full suite from the activated environment:
+Run the full suite from the activated environment. Restrict collection to
+`tests/` so local temporary folders are not scanned, and disable pytest's
+optional cache if the workspace does not permit writing `.pytest_cache`:
 
 ```cmd
-python -m pytest -q
+python -m pytest tests -q -p no:cacheprovider --basetemp=.pytest-tmp-local
 ```
 
-If the system temporary directory is restricted, keep pytest's temporary data
-inside the project:
-
-```cmd
-python -m pytest -q --basetemp=.pytest-tmp
-```
+`--basetemp` keeps test-created temporary data inside the project.
 
 Current verified result:
 
 ```text
-58 passed
+62 passed
 ```
 
 The suite tests:

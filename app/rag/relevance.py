@@ -38,7 +38,10 @@ that helps answer the question. Do not infer missing facts.
 """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=os.getenv("OPENAI_MODEL", "gpt-5-nano"),
+        reasoning={
+            "effort": os.getenv("OPENAI_REASONING_EFFORT", "minimal")
+        },
         input=prompt
     )
 

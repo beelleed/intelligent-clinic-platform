@@ -1,9 +1,14 @@
+import logging
 import os
 
 import uvicorn
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(levelname)s: %(name)s: %(message)s",
+    )
     reload_enabled = (
         os.getenv("APP_RELOAD", "true").strip().lower() == "true"
     )

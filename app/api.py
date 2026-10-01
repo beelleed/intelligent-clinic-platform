@@ -1,5 +1,6 @@
 import os
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -15,6 +16,8 @@ from app.services.chat import (
     LLMRequestError,
     MCPConnectionError,
     create_chat_response,
+    initialize_chat_runtime,
+    shutdown_chat_runtime,
 )
 
 
@@ -24,9 +27,29 @@ STATIC_DIRECTORY = PROJECT_ROOT / "static"
 LOGGER = logging.getLogger(__name__)
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Keep MCP subprocesses and the compiled agent graph warm per instance."""
+    if _public_chat_enabled():
+        try:
+            await initialize_chat_runtime()
+        except Exception as exc:
+            # FAQ mode must remain available if model or MCP startup fails. A
+            # later chat request uses the existing controlled 502/503 handling.
+            LOGGER.error(
+                "Persistent clinic agent startup failed (error_type=%s)",
+                type(exc).__name__,
+            )
+    try:
+        yield
+    finally:
+        await shutdown_chat_runtime()
+
+
 app = FastAPI(
     title="Intelligent Clinic Assistant",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
 

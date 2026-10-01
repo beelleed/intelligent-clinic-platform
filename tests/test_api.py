@@ -143,6 +143,7 @@ def test_chat_accepts_valid_request(monkeypatch) -> None:
         model="test-model",
         api_key="test-key",
         base_url="https://example.test/v1",
+        reasoning_effort="minimal",
     )
     mock_chat_openai.return_value.ainvoke.assert_awaited_once()
     messages = mock_chat_openai.return_value.ainvoke.await_args.args[0]
@@ -273,9 +274,10 @@ def test_chat_uses_default_model_when_model_is_not_configured(monkeypatch) -> No
 
     assert response.status_code == 200
     mock_chat_openai.assert_called_once_with(
-        model="gpt-5",
+        model="gpt-5-nano",
         api_key="test-key",
         base_url=None,
+        reasoning_effort="minimal",
     )
 
 
@@ -319,6 +321,7 @@ def test_chat_returns_controlled_error_when_model_request_fails(monkeypatch) -> 
         model="test-model",
         api_key="test-key",
         base_url=None,
+        reasoning_effort="minimal",
     )
 
 

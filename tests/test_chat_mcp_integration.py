@@ -7,10 +7,17 @@ import sys
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
-from app.services.chat import _load_mcp_tools, create_chat_response
+from app.services.chat import (
+    _answer_with_verified_sources,
+    _load_mcp_tools,
+    chat_runtime_ready,
+    create_chat_response,
+    initialize_chat_runtime,
+    shutdown_chat_runtime,
+)
 
 
 @pytest.fixture
@@ -67,7 +74,7 @@ class ToolCallingModel:
         self.bound_tool_names = []
         self.tool_message = None
 
-    def bind_tools(self, tools):
+    def bind_tools(self, tools, **kwargs):
         self.bound_tool_names = [tool.name for tool in tools]
         return self
 
@@ -104,7 +111,7 @@ class MultiServerToolCallingModel:
         self.bound_tool_names = []
         self.tool_messages = []
 
-    def bind_tools(self, tools):
+    def bind_tools(self, tools, **kwargs):
         self.bound_tool_names = [tool.name for tool in tools]
         return self
 
@@ -150,6 +157,49 @@ class MultiServerToolCallingModel:
         )
 
 
+class ParallelMultiToolCallingModel:
+    """Model double that requests independent tools in one model response."""
+
+    def __init__(self):
+        self.bound_tool_names = []
+        self.tool_messages = []
+        self.call_count = 0
+
+    def bind_tools(self, tools, **kwargs):
+        self.bound_tool_names = [tool.name for tool in tools]
+        return self
+
+    async def ainvoke(self, messages):
+        self.call_count += 1
+        self.tool_messages = [
+            message for message in messages if isinstance(message, ToolMessage)
+        ]
+        if not self.tool_messages:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "clinic_knowledge_search_clinic_knowledge",
+                        "args": {
+                            "query": "Are procedure estimates guaranteed?",
+                            "max_results": 1,
+                        },
+                        "id": "parallel-knowledge-call",
+                        "type": "tool_call",
+                    },
+                    {
+                        "name": "clinic_operations_get_procedure_status",
+                        "args": {"doctor_id": "dr-chen"},
+                        "id": "parallel-operations-call",
+                        "type": "tool_call",
+                    },
+                ],
+            )
+        return AIMessage(
+            content="The procedure is in progress, and estimates are not guaranteed."
+        )
+
+
 class NoToolModel:
     """Model double that answers directly while MCP tools are available."""
 
@@ -157,7 +207,7 @@ class NoToolModel:
         self.bound_tool_names = []
         self.call_count = 0
 
-    def bind_tools(self, tools):
+    def bind_tools(self, tools, **kwargs):
         self.bound_tool_names = [tool.name for tool in tools]
         return self
 
@@ -173,7 +223,7 @@ class FailingToolModel:
         self.tool_name = tool_name
         self.tool_message = None
 
-    def bind_tools(self, tools):
+    def bind_tools(self, tools, **kwargs):
         return self
 
     async def ainvoke(self, messages):
@@ -244,6 +294,36 @@ async def test_mcp_adapter_discovers_tools_from_all_servers():
 
 
 @pytest.mark.anyio
+async def test_persistent_runtime_reuses_connected_mcp_tools():
+    model = ToolCallingModel()
+
+    with patch("app.services.chat._create_model", return_value=model) as create_model:
+        await initialize_chat_runtime()
+        try:
+            assert chat_runtime_ready() is True
+            await initialize_chat_runtime()
+            create_model.assert_called_once()
+
+            with patch(
+                "app.services.chat._load_mcp_tools",
+                new=AsyncMock(side_effect=AssertionError("unexpected reload")),
+            ):
+                response = await create_chat_response(
+                    "What is the queue status for Dr. Lee? My number is 21.",
+                    "persistent-runtime-test",
+                )
+        finally:
+            await shutdown_chat_runtime()
+
+    assert response == (
+        "Dr. Amanda Lee is currently serving number 18.\n\n"
+        "[Source: clinic_operations_get_queue_status]"
+    )
+    assert chat_runtime_ready() is False
+    assert model.tool_message is not None
+
+
+@pytest.mark.anyio
 async def test_agent_executes_model_selected_mcp_tool_and_returns_final_answer():
     model = ToolCallingModel()
 
@@ -253,7 +333,10 @@ async def test_agent_executes_model_selected_mcp_tool_and_returns_final_answer()
             "mcp-agent-test",
         )
 
-    assert response == "Dr. Amanda Lee is currently serving number 18."
+    assert response == (
+        "Dr. Amanda Lee is currently serving number 18.\n\n"
+        "[Source: clinic_operations_get_queue_status]"
+    )
     assert "clinic_operations_get_queue_status" in model.bound_tool_names
     assert model.tool_message is not None
     assert model.tool_message.name == "clinic_operations_get_queue_status"
@@ -272,6 +355,8 @@ async def test_agent_chains_tool_calls_across_both_mcp_servers():
 
     assert response == (
         "Wait times are estimates. Dr. Amanda Lee is currently serving number 18."
+        "\n\n[Source: clinic_knowledge_search_clinic_knowledge; "
+        "queue-and-wait-times; clinic_operations_get_queue_status]"
     )
     assert "clinic_knowledge_search_clinic_knowledge" in model.bound_tool_names
     assert "clinic_operations_get_queue_status" in model.bound_tool_names
@@ -284,6 +369,28 @@ async def test_agent_chains_tool_calls_across_both_mcp_servers():
 
 
 @pytest.mark.anyio
+async def test_agent_executes_independent_tool_calls_in_one_parallel_step():
+    model = ParallelMultiToolCallingModel()
+
+    with patch("app.services.chat._create_model", return_value=model):
+        response = await create_chat_response(
+            "What is Dr. Chen's procedure status, and are estimates guaranteed?",
+            "parallel-tools-agent-test",
+        )
+
+    assert response == (
+        "The procedure is in progress, and estimates are not guaranteed."
+        "\n\n[Source: clinic_knowledge_search_clinic_knowledge; "
+        "procedure-status; clinic_operations_get_procedure_status]"
+    )
+    assert model.call_count == 2
+    assert {message.name for message in model.tool_messages} == {
+        "clinic_knowledge_search_clinic_knowledge",
+        "clinic_operations_get_procedure_status",
+    }
+
+
+@pytest.mark.anyio
 async def test_agent_can_answer_without_calling_tools_when_none_are_needed():
     model = NoToolModel()
 
@@ -293,6 +400,38 @@ async def test_agent_can_answer_without_calling_tools_when_none_are_needed():
     assert response == "Hello! How can I help you today?"
     assert len(model.bound_tool_names) == 9
     assert model.call_count == 1
+
+
+def test_verified_sources_replace_model_citations_and_ignore_prior_turns():
+    messages = [
+        HumanMessage(content="Earlier question"),
+        ToolMessage(
+            content='{"doctor_id": "dr-lee"}',
+            name="clinic_operations_get_queue_status",
+            tool_call_id="old-call",
+        ),
+        HumanMessage(content="Current question"),
+        ToolMessage(
+            content='{"matches": [{"document_id": "procedure-status"}]}',
+            name="clinic_knowledge_search_clinic_knowledge",
+            tool_call_id="knowledge-call",
+        ),
+        ToolMessage(
+            content='{"doctor_id": "dr-chen"}',
+            name="clinic_operations_get_procedure_status",
+            tool_call_id="procedure-call",
+        ),
+    ]
+
+    answer = _answer_with_verified_sources(
+        "In progress. [Source: invented-id]\nSource: [dr-chen procedure status]",
+        messages,
+    )
+
+    assert answer == (
+        "In progress.\n\n[Source: clinic_knowledge_search_clinic_knowledge; "
+        "procedure-status; clinic_operations_get_procedure_status]"
+    )
 
 
 @pytest.mark.anyio

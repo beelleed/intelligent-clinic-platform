@@ -13,7 +13,10 @@ def main() -> None:
 
     client = OpenAI(api_key=api_key)
     response = client.responses.create(
-        model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
+        model=os.getenv("OPENAI_MODEL", "gpt-5-nano"),
+        reasoning={
+            "effort": os.getenv("OPENAI_REASONING_EFFORT", "minimal")
+        },
         input="""
 Explain Retrieval-Augmented Generation (RAG).
 

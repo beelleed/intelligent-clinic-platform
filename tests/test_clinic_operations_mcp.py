@@ -52,11 +52,30 @@ async def test_queue_status_uses_stored_data_for_wait_estimate():
 
     assert result.is_error is False
     assert result.structured_content["current_number"] == 18
+    assert result.structured_content["ticket_issued"] is True
     assert result.structured_content["patients_ahead"] == 3
     assert result.structured_content["estimated_wait_minutes"] == 36
     assert result.structured_content["timezone"] == "America/Los_Angeles"
     updated_at = datetime.fromisoformat(result.structured_content["updated_at"])
     assert updated_at.utcoffset().total_seconds() in {-28800, -25200}
+
+
+@pytest.mark.anyio
+async def test_unissued_ticket_has_only_hypothetical_wait_estimate():
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "get_queue_status",
+            {"doctor_id": "dr-lee", "patient_number": 28},
+        )
+
+    assert result.is_error is False
+    assert result.structured_content["current_number"] == 18
+    assert result.structured_content["last_issued_number"] == 24
+    assert result.structured_content["ticket_issued"] is False
+    assert result.structured_content["patients_ahead"] is None
+    assert result.structured_content["estimated_wait_minutes"] is None
+    assert result.structured_content["hypothetical_queue_positions"] == 10
+    assert result.structured_content["hypothetical_wait_minutes"] == 120
 
 
 @pytest.mark.anyio
@@ -73,6 +92,10 @@ async def test_procedure_and_schedule_tools_return_structured_data():
     assert procedure.is_error is False
     assert procedure.structured_content["status"] == "in_progress"
     assert procedure.structured_content["estimated_remaining_minutes"] in {44, 45}
+    assert procedure.structured_content["completion_estimate_notice"] == (
+        "Procedure completion estimates are not guaranteed; the actual end "
+        "time can change as the procedure progresses."
+    )
     assert procedure.structured_content["timezone"] == "America/Los_Angeles"
     estimated_end = datetime.fromisoformat(
         procedure.structured_content["estimated_end_at"]
