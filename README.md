@@ -6,12 +6,12 @@ JavaScript**.
 
 🌐 **Live site:** [Intelligent Clinic Assistant](https://intelligent-clinic-assistant-939611494549.us-west1.run.app)
 
-The browser opens in a no-cost **Clinic FAQ mode**. Visitors can optionally
-switch to **Lumi**, a virtual clinic guide that uses a LangGraph agent to select
-from nine tools exposed by three MCP servers. Lumi can answer source-grounded
-policy questions, read synthetic queue and procedure status, check doctor
-schedules, and reserve anonymous synthetic appointment slots while retaining
-context within the browser session.
+The browser opens in a **Clinic FAQ mode that does not call OpenAI**. Visitors
+can optionally switch to **Lumi**, a virtual clinic guide that uses a LangGraph
+agent to select from nine tools exposed by three MCP servers. Lumi can answer
+source-grounded policy questions, read synthetic queue and procedure status,
+check doctor schedules, and reserve anonymous synthetic appointment slots while
+retaining context within the browser session.
 
 > All doctors, queues, procedures, appointments, contact details, and
 > timestamps in this project are synthetic. The application is not connected
@@ -69,8 +69,8 @@ The example above combines live synthetic procedure status from
 ### 🧠 Dynamic status and session memory
 
 <p align="center">
-  <img src="images/lumi_procedure_initial.png" width="380" height="528" alt="Initial Lumi procedure-status response">
-  <img src="images/lumi_procedure_followup.png" width="380" height="528" alt="Follow-up Lumi response using session memory">
+  <img src="images/lumi_procedure_initial_aligned.png" width="380" alt="Initial Lumi procedure-status response">
+  <img src="images/lumi_procedure_followup_aligned.png" width="380" alt="Follow-up Lumi response using session memory">
 </p>
 
 The follow-up asks only to check again. Lumi retains the doctor and procedure
@@ -115,8 +115,9 @@ The application has three main request paths:
 
 1. 📚 `POST /demo/query` returns a selected fixed FAQ answer without using an LLM.
 2. 💡 `POST /chat` runs Lumi through LangGraph, OpenAI, and the MCP tool layer.
-3. 🔎 `POST /query` preserves the original FAISS RAG pipeline for evaluation and
-   backward compatibility; it is not the default browser experience.
+3. 🔎 `POST /query` preserves the original FAISS RAG pipeline for local
+   evaluation and backward compatibility. It is disabled on the public Cloud
+   Run service with `DEMO_MODE=true`.
 
 FastAPI initializes the three MCP connections and compiles the LangGraph agent
 once during the application lifespan. Later Lumi turns reuse that warm runtime
@@ -222,7 +223,7 @@ Interactive OpenAPI documentation is available locally at
 | `GET /health` | Report service, agent, MCP-server count, and public-chat status |
 | `POST /demo/query` | Return one predefined Clinic FAQ answer |
 | `POST /chat` | Run one session-scoped Lumi turn |
-| `POST /query` | Run the original FAISS RAG pipeline |
+| `POST /query` | Run the original FAISS RAG pipeline when `DEMO_MODE=false`; disabled on the public site |
 
 Example Lumi request:
 
@@ -252,7 +253,8 @@ Example response:
 - ⏱️ Rate-limit responses use HTTP 429 with `Retry-After` and
   `X-Rate-Limit-Reason` headers.
 - ↩️ When a limit is reached, the UI offers a user-controlled return to the
-  no-cost Clinic FAQ mode; it does not silently replace an agent answer.
+  Clinic FAQ mode, which uses no OpenAI API calls; it does not silently replace
+  an agent answer.
 - 🔒 `PUBLIC_CHAT_ENABLED=false` disables `/chat` with HTTP 403 and hides the
   **Ask Lumi** control without rebuilding the application.
 - 🧯 Expected model, configuration, and MCP failures return controlled 502/503
@@ -423,7 +425,7 @@ is not wanted.
 | `CLINIC_KNOWLEDGE_DIR` | `clinic_knowledge` | Policy document directory |
 | `CLINIC_KNOWLEDGE_INDEX_DIR` | `data` | Persistent knowledge-index directory |
 | `CLINIC_KNOWLEDGE_SEARCH_MODE` | `semantic` | `semantic` or key-free `lexical` search |
-| `DEMO_MODE` | `false` | Disable only the legacy `/query` endpoint |
+| `DEMO_MODE` | `false` locally | Set to `true` on the public site to disable only the legacy `/query` endpoint |
 | `APP_RELOAD` | `true` locally | Enable Uvicorn reload in `main.py` |
 | `PORT` | `8080` | HTTP port |
 
@@ -465,17 +467,19 @@ request limits and session memory stay as consistent as possible. Start with
 the FAQ-only mode; the deployment command contains no API key:
 
 ```cmd
-gcloud run deploy intelligent-clinic-assistant --source . --region us-west1 --allow-unauthenticated --min-instances 0 --max-instances 1 --concurrency 1 --memory 1Gi --set-env-vars PUBLIC_CHAT_ENABLED=false,CHAT_RATE_LIMIT_PER_MINUTE=3,CHAT_RATE_LIMIT_PER_DAY=10,APP_RELOAD=false
+gcloud run deploy intelligent-clinic-assistant --source . --region us-west1 --allow-unauthenticated --min-instances 0 --max-instances 1 --concurrency 1 --memory 1Gi --set-env-vars PUBLIC_CHAT_ENABLED=false,DEMO_MODE=true,CHAT_RATE_LIMIT_PER_MINUTE=3,CHAT_RATE_LIMIT_PER_DAY=10,APP_RELOAD=false
 ```
 
 To enable Lumi after the initial deployment, open the service in the Cloud Run
 console. Under **Containers → Variables & Secrets**, add the server-side
 `OPENAI_API_KEY` environment variable and change `PUBLIC_CHAT_ENABLED` to
-`true`, then deploy a new revision. Keep the key out of command lines, Git,
-browser-side code, and screenshots. Secret Manager is recommended for stronger
-secret handling, but is not required for this portfolio deployment. The command
-above is for the initial FAQ-only deployment; running it again would turn Lumi
-off and replace the service's existing environment variables.
+`true`, while keeping `DEMO_MODE=true`, then deploy a new revision. The public
+`/query` endpoint then returns HTTP 403; the FAQ and Lumi remain available.
+Keep the key out of command lines, Git, browser-side code, and screenshots.
+Secret Manager is recommended for stronger secret handling, but is not required
+for this portfolio deployment. The command above is for the initial FAQ-only
+deployment; running it again would turn Lumi off and replace the service's
+existing environment variables.
 
 Cloud Run's local filesystem is ephemeral: generated SQLite data and FAISS
 indexes are recreated after an instance stops. This is suitable for the
