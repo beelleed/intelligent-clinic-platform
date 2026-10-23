@@ -1,13 +1,17 @@
 # Queue and Wait Times
 
-The public queue display shows the number currently being served. A patient's
-estimated wait is calculated from the number of appointments ahead and the
-doctor's recent average visit duration.
+The public queue display shows the number currently being served and when the
+queue snapshot was updated. Ticket numbers may be skipped or called out of
+order. Their difference does not tell a patient how many people are ahead or
+how long the wait will be. This sample website does not publish a wait estimate.
 
-Wait times are estimates, not guarantees. Urgent clinical needs, longer visits,
-and schedule changes can cause delays. Clinic staff may extend the displayed
-estimate when a doctor needs additional consultation or procedure time.
+## Missed number
+
+If you miss your number, ask the front desk how to rejoin the queue. Clinic
+staff decide whether to call the number again, place you later in the queue,
+or reschedule. The website cannot promise an immediate consultation.
+
+## Public display privacy
 
 The public display uses queue numbers and must not show patient names, medical
 record numbers, diagnoses, or other identifying health information.
-

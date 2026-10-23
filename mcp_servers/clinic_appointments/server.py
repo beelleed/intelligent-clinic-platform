@@ -11,7 +11,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel
 
 from .database import connect
-from mcp_servers.clinic_time import clinic_timezone_name, to_clinic_iso
+from mcp_servers.clinic_time import clinic_timezone, clinic_timezone_name, to_clinic_iso
 
 
 class AppointmentSlot(BaseModel):
@@ -65,15 +65,23 @@ def _slot_from_row(row) -> AppointmentSlot:
     )
 
 
+def _slot_is_future(row, now: datetime) -> bool:
+    start = datetime.fromisoformat(
+        f"{row['appointment_date']}T{row['start_time']}"
+    ).replace(tzinfo=clinic_timezone())
+    return start.astimezone(UTC) > now.astimezone(UTC)
+
+
 @mcp.tool()
 def list_available_appointments(
     doctor_id: str | None = None,
     appointment_date: str | None = None,
 ) -> AppointmentAvailability:
-    """List available demo slots, optionally filtered by doctor and ISO date."""
+    """List unreserved future slots in clinic time, filtered by doctor or ISO date."""
     appointment_date = _validated_date(appointment_date)
-    clauses = ["is_available = 1"]
-    parameters: list[str] = []
+    now = datetime.now(clinic_timezone())
+    clauses = ["is_available = 1", "appointment_date >= ?"]
+    parameters: list[str] = [now.date().isoformat()]
     if doctor_id:
         clauses.append("doctor_id = ?")
         parameters.append(doctor_id)
@@ -88,9 +96,23 @@ def list_available_appointments(
         ORDER BY appointment_date, start_time, doctor_name
     """
     with closing(connect()) as connection:
+        if doctor_id:
+            valid_ids = {
+                row[0] for row in connection.execute(
+                    "SELECT DISTINCT doctor_id FROM appointment_slots"
+                )
+            }
+            if doctor_id not in valid_ids:
+                raise ToolError(
+                    f"Unknown doctor_id '{doctor_id}'. Valid doctor IDs: "
+                    + ", ".join(sorted(valid_ids))
+                    + ". Use list_doctors to resolve a doctor or specialty."
+                )
         rows = connection.execute(query, parameters).fetchall()
 
-    return AppointmentAvailability(slots=[_slot_from_row(row) for row in rows])
+    return AppointmentAvailability(slots=[
+        _slot_from_row(row) for row in rows if _slot_is_future(row, now)
+    ])
 
 
 @mcp.tool()
@@ -113,6 +135,8 @@ def book_appointment(slot_id: int) -> AppointmentReservation:
             raise ToolError(f"Unknown slot_id '{slot_id}'.")
         if not slot["is_available"]:
             raise ToolError(f"Appointment slot '{slot_id}' is no longer available.")
+        if not _slot_is_future(slot, datetime.now(UTC)):
+            raise ToolError(f"Appointment slot '{slot_id}' has already started or expired.")
 
         booking_reference = f"APT-{secrets.token_hex(4).upper()}"
         created_at = datetime.now(UTC).replace(microsecond=0).isoformat()

@@ -1,0 +1,125 @@
+{
+  "locale": "en",
+  "clinic_type": "General outpatient clinic (planning assumption)",
+  "review_status": "pending_clinic_review",
+  "faqs": [
+    {
+      "id": "current-number",
+      "category": "Queue",
+      "question": "Which number is being called now?",
+      "answer": "The current number must come from the clinic's live queue system. The website should show only the current number for each room or doctor, the last-updated time, and any clinic-approved reminder. It must not estimate the number of people ahead or the waiting time from the difference between ticket numbers.",
+      "requires_live_data": true,
+      "review_status": "pending_integration"
+    },
+    {
+      "id": "number-skips",
+      "category": "Queue",
+      "question": "Why are ticket numbers called out of order?",
+      "answer": "Appointments, walk-ins, cancellations, missed calls, and room assignments can affect the calling order. The difference between two numbers does not tell you how many people are ahead or how long you will wait. Follow the live display and front-desk instructions.",
+      "requires_live_data": false,
+      "review_status": "pending_clinic_review"
+    },
+    {
+      "id": "return-before-call",
+      "category": "Queue",
+      "question": "Can I leave and come back shortly before my number is called?",
+      "answer": "The clinic must confirm whether patients may leave temporarily, how early they should return, and whether reminders are offered. Numbers may be skipped or the display may be delayed, so follow the front desk's instructions.",
+      "requires_live_data": false,
+      "review_status": "pending_clinic_review"
+    },
+    {
+      "id": "missed-number",
+      "category": "Queue",
+      "question": "What happens if I miss my number?",
+      "answer": "Ask the front desk how to rejoin the queue. The clinic must decide whether to call the number again, place the patient later in the queue, or reschedule. The website cannot promise an immediate consultation.",
+      "requires_live_data": false,
+      "review_status": "pending_clinic_review"
+    },
+    {
+      "id": "registration",
+      "category": "Registration",
+      "question": "How do I register for my first visit?",
+      "answer": "The clinic must confirm its registration methods, required documents, and whether it accepts walk-ins or phone appointments. Do not enter an identity number, medical history, or other personal information in a public chat.",
+      "requires_live_data": false,
+      "review_status": "pending_clinic_review"
+    },
+    {
+      "id": "appointments",
+      "category": "Registration",
+      "question": "Can I book, cancel, or reschedule an appointment?",
+      "answer": "The clinic must confirm the available channels and deadlines for booking, cancellation, and rescheduling. Until the website is connected to an approved booking system, it must not claim that a request has been completed.",
+      "requires_live_data": false,
+      "review_status": "pending_clinic_review"
+    },
+    {
+      "id": "hours",
+      "category": "Clinic information",
+      "question": "What are the clinic's opening hours?",
+      "answer": "Consultation hours, closures, and temporary changes have not yet been supplied by the clinic. Once published, use the schedule maintained by the clinic.",
+      "requires_live_data": false,
+      "review_status": "pending_clinic_review"
+    },
+    {
+      "id": "doctor-location",
+      "category": "Clinic information",
+      "question": "Is the doctor seeing patients, performing a procedure, or off duty?",
+      "answer": "A doctor's work status may be shown only when the clinic authorizes and updates it with a timestamp. Without a verified update, the website must not infer the doctor's location, procedure progress, or completion time.",
+      "requires_live_data": true,
+      "review_status": "pending_integration"
+    },
+    {
+      "id": "fees",
+      "category": "Fees",
+      "question": "How much will a visit or self-pay service cost?",
+      "answer": "The clinic must supply current registration fees, insurance information, and self-pay prices. Confirm the actual charge and eligibility with the front desk.",
+      "requires_live_data": false,
+      "review_status": "pending_clinic_review"
+    },
+    {
+      "id": "medication-questions",
+      "category": "Medication",
+      "question": "Can I look up a medicine's general use or possible side effects?",
+      "answer": "The website may provide reviewed, general information about an active ingredient. It cannot decide whether the medicine is suitable for a particular person, diagnose a condition, or provide individualized instructions. Follow the prescription label and your doctor or pharmacist's advice.",
+      "requires_live_data": false,
+      "review_status": "pending_clinic_review"
+    },
+    {
+      "id": "side-effect-response",
+      "category": "Medication",
+      "question": "I feel unwell after taking medicine. Can the website tell me whether to stop it?",
+      "answer": "The website cannot assess an individual reaction or tell someone to stop or switch a medicine. Contact the prescribing clinic or a pharmacist. Seek urgent medical care if symptoms are severe or there is immediate danger.",
+      "requires_live_data": false,
+      "review_status": "pending_clinic_review"
+    }
+  ],
+  "medications": [
+    {
+      "ingredient": "Acetaminophen",
+      "general_use": "Commonly used to reduce fever and relieve pain.",
+      "possible_effects": "Some people may have an allergic reaction. Taking too much can harm the liver; avoid alcohol while using it.",
+      "source_url": "https://www.fda.gov.tw/tc/newsContent.aspx?id=24054",
+      "review_status": "pending_pharmacist_review"
+    },
+    {
+      "ingredient": "Ibuprofen",
+      "general_use": "A nonsteroidal anti-inflammatory medicine used to relieve pain, reduce fever, and lessen inflammation.",
+      "possible_effects": "May cause stomach discomfort. Be aware of the risk of ulcers or gastrointestinal bleeding, particularly with prolonged or high-dose use.",
+      "source_url": "https://www.fda.gov.tw/tc/PublishOtherEpaperContent.aspx?id=1561&r=513784644&tid=5158",
+      "review_status": "pending_pharmacist_review"
+    },
+    {
+      "ingredient": "Chlorpheniramine",
+      "general_use": "A first-generation antihistamine used to ease allergy symptoms such as sneezing and a runny nose.",
+      "possible_effects": "May cause drowsiness, dry mouth, or difficulty urinating. Drowsiness can affect driving or other activities that require alertness.",
+      "source_url": "https://www.fda.gov.tw/TC/PublishOtherEpaperContent.aspx?id=1538&r=889302372&tid=4980",
+      "review_status": "pending_pharmacist_review"
+    },
+    {
+      "ingredient": "Amoxicillin",
+      "general_use": "An antibiotic used for bacterial infections when a clinician determines it is appropriate; it does not treat common viral infections.",
+      "possible_effects": "May cause a rash, diarrhea, nausea, or vomiting. Contact a healthcare professional if an allergic reaction is suspected.",
+      "source_url": "https://www.fda.gov.tw/TC/newsContent.aspx?cid=4&id=t623695",
+      "review_status": "pending_pharmacist_review"
+    }
+  ]
+}

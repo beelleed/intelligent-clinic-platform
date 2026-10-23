@@ -1,4 +1,4 @@
-// Adapted from https://github.com/beelleed/intelligent-clinic-platform — replaced the earlier demo behavior with the required /chat API and session memory.
+// Adapted from https://github.com/beelleed/intelligent-clinic-platform — the live UI uses the session-scoped chat stream.
 
 const SESSION_STORAGE_KEY = "clinic-agent-session-id";
 
@@ -26,6 +26,47 @@ const demoFallbackButton = document.getElementById("demo-fallback-button");
 const exampleButtons = document.querySelectorAll(".example-button");
 let publicChatEnabled = false;
 let liveAgentAvailable = true;
+let externalSearchAvailable = false;
+
+function updateResourceVisibility() {
+    document.getElementById("official-resources").classList.toggle("hidden", !publicChatEnabled || !externalSearchAvailable);
+}
+
+// Render a small, safe subset of answer formatting; never interpret model HTML.
+function renderAnswer(text) {
+    answerElement.replaceChildren();
+    let list = null;
+    for (const line of text.split(/\r?\n/)) {
+        if (!line.trim()) { list = null; continue; }
+        const item = line.match(/^\s*[-*]\s+(.+)$/);
+        if (item) {
+            if (!list) { list = document.createElement("ul"); answerElement.append(list); }
+            const li = document.createElement("li");
+            li.textContent = item[1];
+            list.append(li);
+        } else {
+            list = null;
+            const paragraph = document.createElement("p");
+            paragraph.textContent = line;
+            if (line.startsWith("External reference: https://")) {
+                try {
+                    const url = new URL(line.slice("External reference: ".length).trim());
+                    const domains = ["cdc.gov", "nih.gov", "medlineplus.gov", "who.int", "fda.gov", "hhs.gov"];
+                    if (url.protocol === "https:" && !url.username && !url.password && domains.some((domain) => url.hostname === domain || url.hostname.endsWith(`.${domain}`))) {
+                        const link = document.createElement("a");
+                        link.href = url.href;
+                        link.textContent = `Official source · ${url.hostname} ↗`;
+                        link.target = "_blank";
+                        link.rel = "noopener noreferrer";
+                        paragraph.replaceChildren(link);
+                    }
+                } catch (_error) { /* Invalid URLs remain inert plain text. */ }
+            }
+            if (line.startsWith("[Source:")) paragraph.className = "source-note";
+            answerElement.append(paragraph);
+        }
+    }
+}
 
 
 function createSessionId() {
@@ -58,7 +99,11 @@ function setLoading(isLoading) {
     askButton.disabled = isLoading;
     resetButton.disabled = isLoading;
     demoModeButton.disabled = isLoading;
+    document.getElementById("official-resources-button").disabled = isLoading;
     exampleButtons.forEach((button) => {
+        button.disabled = isLoading;
+    });
+    document.querySelectorAll(".visit-shortcut").forEach((button) => {
         button.disabled = isLoading;
     });
 }
@@ -66,14 +111,15 @@ function setLoading(isLoading) {
 
 function setPublicDemoMode() {
     publicChatEnabled = false;
+    updateResourceVisibility();
     modeNotice.classList.remove("hidden");
     sessionStrip.classList.add("hidden");
     resetButton.classList.add("hidden");
     chatForm.classList.add("hidden");
-    document.getElementById("chat-heading").textContent = "Browse clinic FAQs";
+    document.getElementById("chat-heading").textContent = "How can we help you today?";
     modeDescription.textContent = (
-        "Explore ten basic clinic FAQs below. Current operational information "
-        + "is available only through Lumi."
+        "Choose a topic for a quick answer. For schedules and appointment "
+        + "information, ask Lumi."
     );
     loadingTitle.textContent = "Loading FAQ response...";
     loadingDescription.textContent = (
@@ -98,14 +144,15 @@ function setLiveAgentMode() {
         return;
     }
     publicChatEnabled = true;
+    updateResourceVisibility();
     modeNotice.classList.add("hidden");
     sessionStrip.classList.remove("hidden");
     resetButton.classList.remove("hidden");
     chatForm.classList.remove("hidden");
     document.getElementById("chat-heading").textContent = "Chat with Lumi";
     modeDescription.textContent = (
-        "Lumi is a virtual clinic guide that selects tools from three MCP "
-        + "servers and remembers context within this browser session."
+        "Tell Lumi what's on your mind about your visit. Your clinic guide "
+        + "checks sources and can follow along with your questions."
     );
     loadingTitle.textContent = "Lumi is working...";
     loadingDescription.textContent = (
@@ -163,15 +210,83 @@ async function parseError(response) {
 }
 
 
+async function readChatStream(response) {
+    if (!response.body) {
+        throw new Error("Your browser could not read Lumi's response stream.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let eventName = "";
+    let dataLines = [];
+    let completed = false;
+    let answered = false;
+
+    function dispatchEvent() {
+        if (!dataLines.length) {
+            eventName = "";
+            return;
+        }
+        const data = JSON.parse(dataLines.join("\n"));
+        if (eventName === "progress" && typeof data.message === "string") {
+            loadingDescription.textContent = data.message;
+        } else if (eventName === "answer" && typeof data.response === "string") {
+            if (!data.response.trim()) {
+                throw new Error("Lumi returned an invalid response.");
+            }
+            renderAnswer(data.response);
+            answerSection.classList.remove("hidden");
+            answered = true;
+        } else if (eventName === "error") {
+            throw new Error(data.message || "Lumi could not complete the request.");
+        } else if (eventName === "done") {
+            completed = true;
+        }
+        eventName = "";
+        dataLines = [];
+    }
+
+    try {
+        while (true) {
+            const {value, done} = await reader.read();
+            buffer += decoder.decode(value, {stream: !done});
+            let lineEnd;
+            while ((lineEnd = buffer.indexOf("\n")) !== -1) {
+                const line = buffer.slice(0, lineEnd).replace(/\r$/, "");
+                buffer = buffer.slice(lineEnd + 1);
+                if (!line) {
+                    dispatchEvent();
+                } else if (line.startsWith("event:")) {
+                    eventName = line.slice(6).trim();
+                } else if (line.startsWith("data:")) {
+                    dataLines.push(line.slice(5).trimStart());
+                }
+            }
+            if (done) {
+                break;
+            }
+        }
+    } finally {
+        reader.releaseLock();
+    }
+
+    if (!completed || !answered) {
+        throw new Error("Lumi's response was interrupted. Please try again.");
+    }
+}
+
+
 async function askAgent(query) {
     clearMessages();
     setLoading(true);
 
     try {
-        const response = await fetch("/chat", {
+        const response = await fetch("/chat/stream", {
             method: "POST",
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream"
             },
             body: JSON.stringify({
                 query,
@@ -193,14 +308,9 @@ async function askAgent(query) {
             throw new Error(await parseError(response));
         }
 
-        const data = await response.json();
-        if (typeof data.response !== "string" || !data.response.trim()) {
-            throw new Error("Lumi returned an invalid response.");
-        }
-
-        answerElement.textContent = data.response;
-        answerSection.classList.remove("hidden");
+        await readChatStream(response);
     } catch (error) {
+        answerSection.classList.add("hidden");
         const message = error instanceof Error
             ? error.message
             : "Unable to contact Lumi.";
@@ -254,7 +364,7 @@ async function runDemo(demoId, question) {
             throw new Error("The demo returned an invalid response.");
         }
 
-        answerElement.textContent = formatDemoResponse(data);
+        renderAnswer(formatDemoResponse(data));
         demoQuestionElement.textContent = question;
         demoQuestionGroup.classList.remove("hidden");
         answerSection.classList.remove("hidden");
@@ -278,6 +388,7 @@ async function configureMode() {
         const health = await response.json();
         if (health.public_chat_enabled === false) {
             liveAgentAvailable = false;
+            document.getElementById("shortcut-guidance").textContent = "Lumi is currently unavailable. You can still browse all clinic FAQs below.";
             setPublicDemoMode();
         } else {
             setPublicDemoMode();
@@ -310,6 +421,7 @@ questionInput.addEventListener("keydown", (event) => {
 
 exampleButtons.forEach((button) => {
     button.addEventListener("click", () => {
+        exampleButtons.forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
         if (!publicChatEnabled) {
             runDemo(button.dataset.demoId, button.dataset.question);
             return;
@@ -349,3 +461,67 @@ demoModeButton.addEventListener("click", () => {
 
 displaySessionId();
 configureMode();
+
+fetch("/capabilities").then((response) => response.ok ? response.json() : {}).then((data) => {
+    externalSearchAvailable = data.official_resources === true;
+    updateResourceVisibility();
+}).catch(() => {});
+
+document.getElementById("official-resources-button").addEventListener("click", () => {
+    if (!publicChatEnabled || !externalSearchAvailable) return;
+    questionInput.value = "Search external official CDC websites for public handwashing information and give me the source links.";
+    questionInput.scrollIntoView({block: "center"});
+    questionInput.focus({preventScroll: true});
+});
+
+document.querySelectorAll(".visit-shortcut").forEach((button) => {
+    button.addEventListener("click", () => {
+        clearMessages();
+        if (!liveAgentAvailable) {
+            setPublicDemoMode();
+            document.getElementById("chat-heading").scrollIntoView({block: "center"});
+            showError("Lumi is currently unavailable. Please browse the clinic FAQs instead.");
+            return;
+        }
+        setLiveAgentMode();
+        questionInput.value = button.dataset.visitQuery;
+        questionInput.scrollIntoView({block: "center"});
+        questionInput.focus({preventScroll: true});
+    });
+});
+
+// Maps results stay in this panel, never in clinic conversation memory.
+fetch("/maps/status").then((response) => response.json()).then((status) => {
+    document.getElementById("maps-panel").classList.toggle("hidden", !status.configured);
+}).catch(() => {});
+
+document.getElementById("maps-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = document.getElementById("maps-button");
+    const result = document.getElementById("maps-result");
+    button.disabled = true;
+    result.textContent = "Checking Google Maps…";
+    try {
+        const response = await fetch("/maps/search", {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({query: document.getElementById("maps-query").value.trim()})
+        });
+        if (!response.ok) throw new Error(await parseError(response));
+        const data = await response.json();
+        result.replaceChildren();
+        const summary = document.createElement("p");
+        summary.textContent = data.summary;
+        result.append(summary);
+        for (const source of data.sources) {
+            const url = new URL(source.url);
+            if (url.protocol !== "https:" || !["www.google.com", "maps.google.com", "maps.google.co.uk", "maps.app.goo.gl"].includes(url.hostname)) continue;
+            const link = document.createElement("a");
+            link.href = url.href;
+            link.textContent = `[${source.index}] ${source.title} · Google Maps ↗`;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            result.append(link);
+        }
+    } catch (error) { result.textContent = error.message || "Location lookup unavailable."; }
+    finally { button.disabled = false; }
+});

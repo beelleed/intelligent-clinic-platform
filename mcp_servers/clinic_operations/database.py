@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATABASE_PATH = PROJECT_ROOT / "data" / "clinic_operations.db"
+_INITIALIZE_LOCK = threading.Lock()
 
 
 def get_database_path() -> Path:
@@ -31,7 +33,10 @@ def connect() -> sqlite3.Connection:
     connection = sqlite3.connect(database_path)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
-    _initialize_database(connection)
+    # MCP tool calls can run in parallel threads. Timestamp refresh writes on
+    # connect, so serialize initialization before returning read connections.
+    with _INITIALIZE_LOCK:
+        _initialize_database(connection)
     return connection
 
 
@@ -79,6 +84,8 @@ def _initialize_database(connection: sqlite3.Connection) -> None:
     doctor_count = connection.execute("SELECT COUNT(*) FROM doctors").fetchone()[0]
     if doctor_count == 0:
         _seed_demo_data(connection)
+    elif _has_legacy_demo_doctors(connection):
+        _seed_additional_specialties(connection)
 
     if _demo_refresh_enabled():
         _refresh_demo_timestamps(connection)
@@ -128,6 +135,8 @@ def _seed_demo_data(connection: sqlite3.Connection) -> None:
         [
             ("dr-lee", "Dr. Amanda Lee", "Family Medicine"),
             ("dr-chen", "Dr. Michael Chen", "General Surgery"),
+            ("dr-rivera", "Dr. Sofia Rivera", "Dermatology"),
+            ("dr-park", "Dr. Daniel Park", "Otolaryngology (ENT)"),
         ],
     )
     connection.executemany(
@@ -140,6 +149,8 @@ def _seed_demo_data(connection: sqlite3.Connection) -> None:
         [
             ("dr-lee", 18, 24, 12, now.isoformat()),
             ("dr-chen", 7, 10, 18, now.isoformat()),
+            ("dr-rivera", 12, 17, 15, now.isoformat()),
+            ("dr-park", 31, 36, 14, now.isoformat()),
         ],
     )
     connection.executemany(
@@ -166,6 +177,22 @@ def _seed_demo_data(connection: sqlite3.Connection) -> None:
                 None,
                 now.isoformat(),
             ),
+            (
+                "dr-rivera",
+                "No active procedure",
+                "available",
+                None,
+                None,
+                now.isoformat(),
+            ),
+            (
+                "dr-park",
+                "No active procedure",
+                "available",
+                None,
+                None,
+                now.isoformat(),
+            ),
         ],
     )
     connection.executemany(
@@ -180,5 +207,63 @@ def _seed_demo_data(connection: sqlite3.Connection) -> None:
             ("dr-lee", "Friday", "09:00", "12:00", "Clinic B"),
             ("dr-chen", "Tuesday", "09:00", "12:00", "Surgery Clinic"),
             ("dr-chen", "Thursday", "13:00", "17:00", "Surgery Clinic"),
+            ("dr-rivera", "Monday", "13:00", "17:00", "Specialty Suite"),
+            ("dr-rivera", "Thursday", "09:00", "12:00", "Specialty Suite"),
+            ("dr-park", "Tuesday", "13:00", "17:00", "Clinic B"),
+            ("dr-park", "Friday", "09:00", "12:00", "Clinic B"),
+        ],
+    )
+
+
+def _has_legacy_demo_doctors(connection: sqlite3.Connection) -> bool:
+    """Recognize only the untouched two-doctor seed, not arbitrary user data."""
+    rows = connection.execute(
+        "SELECT id, name FROM doctors ORDER BY id"
+    ).fetchall()
+    return [(row["id"], row["name"]) for row in rows] == [
+        ("dr-chen", "Dr. Michael Chen"),
+        ("dr-lee", "Dr. Amanda Lee"),
+    ]
+
+
+def _seed_additional_specialties(connection: sqlite3.Connection) -> None:
+    """Upgrade the previous synthetic seed without touching existing records."""
+    now = datetime.now(UTC).replace(microsecond=0).isoformat()
+    connection.executemany(
+        "INSERT INTO doctors (id, name, specialty) VALUES (?, ?, ?)",
+        [
+            ("dr-rivera", "Dr. Sofia Rivera", "Dermatology"),
+            ("dr-park", "Dr. Daniel Park", "Otolaryngology (ENT)"),
+        ],
+    )
+    connection.executemany(
+        """INSERT INTO queue_status
+           (doctor_id, current_number, last_issued_number,
+            average_visit_minutes, updated_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        [
+            ("dr-rivera", 12, 17, 15, now),
+            ("dr-park", 31, 36, 14, now),
+        ],
+    )
+    connection.executemany(
+        """INSERT INTO procedures
+           (doctor_id, procedure_name, status, started_at,
+            estimated_end_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        [
+            ("dr-rivera", "No active procedure", "available", None, None, now),
+            ("dr-park", "No active procedure", "available", None, None, now),
+        ],
+    )
+    connection.executemany(
+        """INSERT INTO schedules
+           (doctor_id, weekday, start_time, end_time, location)
+           VALUES (?, ?, ?, ?, ?)""",
+        [
+            ("dr-rivera", "Monday", "13:00", "17:00", "Specialty Suite"),
+            ("dr-rivera", "Thursday", "09:00", "12:00", "Specialty Suite"),
+            ("dr-park", "Tuesday", "13:00", "17:00", "Clinic B"),
+            ("dr-park", "Friday", "09:00", "12:00", "Clinic B"),
         ],
     )

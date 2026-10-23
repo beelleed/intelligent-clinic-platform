@@ -42,16 +42,11 @@ class QueueStatus(BaseModel):
     doctor_name: str
     current_number: int
     last_issued_number: int
-    average_visit_minutes: int
     updated_at: str
     timezone: str
     patient_number: int | None = None
     ticket_issued: bool | None = None
-    patients_ahead: int | None = None
-    estimated_wait_minutes: int | None = None
-    hypothetical_queue_positions: int | None = None
-    hypothetical_wait_minutes: int | None = None
-    already_called: bool | None = None
+    ticket_status_notice: str | None = None
 
 
 class ProcedureStatus(BaseModel):
@@ -115,7 +110,7 @@ def list_doctors() -> DoctorList:
 def get_queue_status(
     doctor_id: str, patient_number: int | None = None
 ) -> QueueStatus:
-    """Get a doctor's current queue and optionally estimate a ticket's wait time."""
+    """Get a queue snapshot; ticket gaps cannot establish people ahead or wait."""
     if patient_number is not None and patient_number < 1:
         raise ToolError("patient_number must be a positive integer.")
 
@@ -123,8 +118,7 @@ def get_queue_status(
         doctor = _get_doctor(connection, doctor_id)
         queue = connection.execute(
             """
-            SELECT current_number, last_issued_number,
-                   average_visit_minutes, updated_at
+            SELECT current_number, last_issued_number, updated_at
             FROM queue_status
             WHERE doctor_id = ?
             """,
@@ -139,34 +133,24 @@ def get_queue_status(
         "doctor_name": doctor["name"],
         "current_number": queue["current_number"],
         "last_issued_number": queue["last_issued_number"],
-        "average_visit_minutes": queue["average_visit_minutes"],
         "updated_at": to_clinic_iso(queue["updated_at"]),
         "timezone": clinic_timezone_name(),
     }
 
     if patient_number is not None:
-        ticket_issued = patient_number <= queue["last_issued_number"]
         result["patient_number"] = patient_number
-        result["ticket_issued"] = ticket_issued
-        queue_positions = max(patient_number - queue["current_number"], 0)
-        if ticket_issued:
-            result.update(
-                {
-                    "patients_ahead": queue_positions,
-                    "estimated_wait_minutes": (
-                        queue_positions * queue["average_visit_minutes"]
-                    ),
-                    "already_called": patient_number <= queue["current_number"],
-                }
+        if patient_number > queue["last_issued_number"]:
+            result["ticket_issued"] = False
+            result["ticket_status_notice"] = (
+                "This number is above the last issued number in the synthetic "
+                "snapshot, so it has not been issued. The number gap does not "
+                "establish an actual queue position or wait."
             )
         else:
-            result.update(
-                {
-                    "hypothetical_queue_positions": queue_positions,
-                    "hypothetical_wait_minutes": (
-                        queue_positions * queue["average_visit_minutes"]
-                    ),
-                }
+            result["ticket_status_notice"] = (
+                "This snapshot does not record individual ticket issuance or "
+                "calling order. The number may have been skipped; its issuance, "
+                "actual queue position, and wait cannot be confirmed."
             )
 
     return QueueStatus(**result)

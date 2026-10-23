@@ -1,16 +1,20 @@
 import os
 import logging
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.models import ChatRequest, ChatResponse, QueryText
 from app.rate_limit import chat_rate_limiter
+from app.services.maps import maps_enabled, search_places
+from app.services.tavily import tavily_enabled
 from app.services.chat import (
     LLMConfigurationError,
     LLMRequestError,
@@ -61,6 +65,17 @@ app.mount(
 
 
 DEMO_RESPONSES = {
+    "specialties-and-locations": {
+        "question": "Which specialties are shown in this sample clinic?",
+        "answer": (
+            "This synthetic outpatient clinic shows Family Medicine, General "
+            "Surgery, Dermatology, and Otolaryngology (ENT). Doctor locations "
+            "and available appointments can differ, so use the current schedule "
+            "and appointment information before visiting. This list is not "
+            "medical advice about which specialty to choose."
+        ),
+        "sources": [{"source": "specialties-and-locations"}],
+    },
     "clinic-hours": {
         "question": "What are the clinic's opening hours?",
         "answer": (
@@ -210,9 +225,8 @@ def _client_ip(request: Request) -> str:
     return "unknown"
 
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
-    """Run one session-scoped LangGraph agent turn with MCP tools."""
+def _check_chat_access(http_request: Request) -> None:
+    """Apply the same public switch and IP quota to both chat endpoints."""
     if not _public_chat_enabled():
         raise HTTPException(
             status_code=403,
@@ -238,28 +252,90 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
             },
         )
 
+
+class MapsSearchRequest(BaseModel):
+    query: QueryText
+
+
+@app.get("/maps/status")
+def maps_status():
+    return {"configured": maps_enabled() and _public_chat_enabled()}
+
+
+@app.get("/capabilities")
+def capabilities():
+    """Expose configured UI features, never credentials or connectivity claims."""
+    return JSONResponse(
+        {"official_resources": tavily_enabled() and _public_chat_enabled()},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.post("/maps/search")
+async def maps_search(payload: MapsSearchRequest, request: Request):
+    if not maps_enabled():
+        raise HTTPException(503, "Location lookup is not connected yet.")
+    _check_chat_access(request)
+    try:
+        result = await search_places(payload.query)
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+    except Exception as exc:
+        LOGGER.warning("Maps search unavailable (error_type=%s)", type(exc).__name__)
+        raise HTTPException(502, "Google Maps lookup is temporarily unavailable. Please try again later.") from None
+
+
+def _chat_error(exc: Exception) -> tuple[int, str]:
+    if isinstance(exc, LLMConfigurationError):
+        LOGGER.error("Agent configuration failed (error_type=%s)", type(exc).__name__)
+        return 503, "The clinic agent is temporarily unavailable."
+    if isinstance(exc, MCPConnectionError):
+        LOGGER.error("Clinic tool connection failed (error_type=%s)", type(exc).__name__)
+        return 502, "Clinic tools are temporarily unavailable."
+    if isinstance(exc, LLMRequestError):
+        LOGGER.error("Model request failed (error_type=%s)", type(exc).__name__)
+        return 502, "The language model service is temporarily unavailable."
+    LOGGER.error("Unhandled chat error (error_type=%s)", type(exc).__name__)
+    return 500, "An unexpected server error occurred."
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
+    """Run one session-scoped LangGraph agent turn with MCP tools."""
+    _check_chat_access(http_request)
     try:
         response = await create_chat_response(request.query, request.session_id)
-    except LLMConfigurationError as exc:
-        LOGGER.error("Agent configuration failed (error_type=%s)", type(exc).__name__)
-        raise HTTPException(
-            status_code=503,
-            detail="The clinic agent is temporarily unavailable.",
-        ) from exc
-    except MCPConnectionError as exc:
-        LOGGER.error("Clinic tool connection failed (error_type=%s)", type(exc).__name__)
-        raise HTTPException(
-            status_code=502,
-            detail="Clinic tools are temporarily unavailable.",
-        ) from exc
-    except LLMRequestError as exc:
-        LOGGER.error("Model request failed (error_type=%s)", type(exc).__name__)
-        raise HTTPException(
-            status_code=502,
-            detail="The language model service is temporarily unavailable.",
-        ) from exc
+    except Exception as exc:
+        status, detail = _chat_error(exc)
+        raise HTTPException(status_code=status, detail=detail) from exc
 
     return ChatResponse(response=response)
+
+
+def _sse_event(name: str, data: dict[str, str]) -> str:
+    return f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest, http_request: Request) -> StreamingResponse:
+    """Stream progress and a final answer; model tokens are not streamed."""
+    _check_chat_access(http_request)
+
+    async def events() -> AsyncIterator[str]:
+        yield _sse_event("progress", {"message": "Lumi is checking clinic sources..."})
+        try:
+            response = await create_chat_response(request.query, request.session_id)
+        except Exception as exc:
+            status, detail = _chat_error(exc)
+            yield _sse_event("error", {"message": detail, "status": str(status)})
+            return
+        yield _sse_event("answer", {"response": response})
+        yield _sse_event("done", {})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.exception_handler(Exception)

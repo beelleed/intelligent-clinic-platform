@@ -1,0 +1,16 @@
+.gcloudignore
+.git/
+.gitignore
+#!include:.gitignore
+.env
+.env.*
+!.env.example
+env/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest-tmp*/
+.pytest_cache/
+tmp/
+data/agent-evals/

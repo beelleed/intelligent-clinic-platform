@@ -1,5 +1,7 @@
 """Focused protocol tests for the clinic operations MCP server."""
 
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from datetime import datetime
 
 import pytest
@@ -17,6 +19,17 @@ def anyio_backend():
 @pytest.fixture(autouse=True)
 def isolated_clinic_database(monkeypatch, tmp_path):
     monkeypatch.setenv("CLINIC_DB_PATH", str(tmp_path / "clinic.db"))
+
+
+def test_parallel_read_connections_can_refresh_synthetic_timestamps():
+    def read_queue() -> int:
+        with closing(connect()) as connection:
+            return connection.execute(
+                "SELECT current_number FROM queue_status WHERE doctor_id = 'dr-lee'"
+            ).fetchone()[0]
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        assert list(pool.map(lambda _index: read_queue(), range(16))) == [18] * 16
 
 
 @pytest.mark.anyio
@@ -43,7 +56,53 @@ async def test_tools_are_discoverable_with_input_schemas():
 
 
 @pytest.mark.anyio
-async def test_queue_status_uses_stored_data_for_wait_estimate():
+async def test_multi_specialty_directory_and_schedule():
+    async with Client(mcp) as client:
+        doctors = await client.call_tool("list_doctors", {})
+        schedule = await client.call_tool(
+            "get_doctor_schedule", {"doctor_id": "dr-rivera", "weekday": "Thursday"}
+        )
+
+    specialties = {
+        doctor["id"]: doctor["specialty"]
+        for doctor in doctors.structured_content["doctors"]
+    }
+    assert specialties == {
+        "dr-lee": "Family Medicine",
+        "dr-chen": "General Surgery",
+        "dr-rivera": "Dermatology",
+        "dr-park": "Otolaryngology (ENT)",
+    }
+    assert schedule.structured_content["schedule"] == [
+        {
+            "weekday": "Thursday",
+            "start_time": "09:00",
+            "end_time": "12:00",
+            "location": "Specialty Suite",
+        }
+    ]
+
+
+def test_legacy_demo_database_adds_specialties_without_replacing_queue():
+    with connect() as connection:
+        connection.execute("UPDATE queue_status SET current_number = 19 WHERE doctor_id = 'dr-lee'")
+        connection.execute("DELETE FROM schedules WHERE doctor_id IN ('dr-rivera', 'dr-park')")
+        connection.execute("DELETE FROM procedures WHERE doctor_id IN ('dr-rivera', 'dr-park')")
+        connection.execute("DELETE FROM queue_status WHERE doctor_id IN ('dr-rivera', 'dr-park')")
+        connection.execute("DELETE FROM doctors WHERE id IN ('dr-rivera', 'dr-park')")
+        connection.commit()
+
+    with connect() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM doctors").fetchone()[0] == 4
+        assert connection.execute(
+            "SELECT current_number FROM queue_status WHERE doctor_id = 'dr-lee'"
+        ).fetchone()[0] == 19
+    with connect() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM doctors").fetchone()[0] == 4
+
+
+@pytest.mark.anyio
+async def test_queue_status_does_not_infer_wait_from_issued_number_gap():
     async with Client(mcp) as client:
         result = await client.call_tool(
             "get_queue_status",
@@ -52,16 +111,19 @@ async def test_queue_status_uses_stored_data_for_wait_estimate():
 
     assert result.is_error is False
     assert result.structured_content["current_number"] == 18
-    assert result.structured_content["ticket_issued"] is True
-    assert result.structured_content["patients_ahead"] == 3
-    assert result.structured_content["estimated_wait_minutes"] == 36
+    assert result.structured_content["ticket_issued"] is None
+    assert "cannot be confirmed" in result.structured_content["ticket_status_notice"]
+    assert "patients_ahead" not in result.structured_content
+    assert "estimated_wait_minutes" not in result.structured_content
+    assert "hypothetical_queue_positions" not in result.structured_content
+    assert "average_visit_minutes" not in result.structured_content
     assert result.structured_content["timezone"] == "America/Los_Angeles"
     updated_at = datetime.fromisoformat(result.structured_content["updated_at"])
     assert updated_at.utcoffset().total_seconds() in {-28800, -25200}
 
 
 @pytest.mark.anyio
-async def test_unissued_ticket_has_only_hypothetical_wait_estimate():
+async def test_unissued_ticket_has_no_wait_estimate():
     async with Client(mcp) as client:
         result = await client.call_tool(
             "get_queue_status",
@@ -72,10 +134,11 @@ async def test_unissued_ticket_has_only_hypothetical_wait_estimate():
     assert result.structured_content["current_number"] == 18
     assert result.structured_content["last_issued_number"] == 24
     assert result.structured_content["ticket_issued"] is False
-    assert result.structured_content["patients_ahead"] is None
-    assert result.structured_content["estimated_wait_minutes"] is None
-    assert result.structured_content["hypothetical_queue_positions"] == 10
-    assert result.structured_content["hypothetical_wait_minutes"] == 120
+    assert "has not been issued" in result.structured_content["ticket_status_notice"]
+    assert "patients_ahead" not in result.structured_content
+    assert "estimated_wait_minutes" not in result.structured_content
+    assert "hypothetical_queue_positions" not in result.structured_content
+    assert "hypothetical_wait_minutes" not in result.structured_content
 
 
 @pytest.mark.anyio

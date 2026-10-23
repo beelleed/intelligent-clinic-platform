@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage, SystemMessage
 
 from app.api import app
 from app.rate_limit import chat_rate_limiter
-from app.services.chat import MCPConnectionError
+from app.services.chat import LLMRequestError, MCPConnectionError
 
 
 client = TestClient(app)
@@ -57,7 +57,8 @@ def test_frontend_assets_use_chat_contract_and_session_memory() -> None:
 
     assert script_response.status_code == 200
     assert stylesheet_response.status_code == 200
-    assert 'fetch("/chat"' in script_response.text
+    assert 'fetch("/chat/stream"' in script_response.text
+    assert 'loadingDescription.textContent = data.message' in script_response.text
     assert 'fetch("/health")' in script_response.text
     assert 'fetch("/demo/query"' in script_response.text
     assert "session_id: getSessionId()" in script_response.text
@@ -77,6 +78,7 @@ def test_frontend_assets_use_chat_contract_and_session_memory() -> None:
 @pytest.mark.parametrize(
     ("demo_id", "source"),
     [
+        ("specialties-and-locations", "specialties-and-locations"),
         ("clinic-hours", "clinic-hours"),
         ("parking", "getting-here-and-parking"),
         ("check-in-and-late-arrival", "appointments-and-check-in"),
@@ -150,6 +152,73 @@ def test_chat_accepts_valid_request(monkeypatch) -> None:
     assert isinstance(messages[0], SystemMessage)
     assert "not explicitly supported by the tool results" in messages[0].content
     assert [message.content for message in messages[1:]] == ["What is MCP?"]
+
+
+def test_chat_stream_sends_progress_answer_and_done() -> None:
+    with patch(
+        "app.api.create_chat_response",
+        new=AsyncMock(return_value="Clinic source answer."),
+    ) as model:
+        response = client.post(
+            "/chat/stream",
+            json={"query": "What are the hours?", "session_id": "stream-1"},
+        )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.text.index("event: progress") < response.text.index("event: answer")
+    assert 'data: {"response": "Clinic source answer."}' in response.text
+    assert response.text.endswith("event: done\ndata: {}\n\n")
+    model.assert_awaited_once_with("What are the hours?", "stream-1")
+
+
+def test_chat_stream_and_json_chat_share_rate_limit(monkeypatch) -> None:
+    monkeypatch.setenv("CHAT_RATE_LIMIT_PER_MINUTE", "1")
+    monkeypatch.setenv("CHAT_RATE_LIMIT_PER_DAY", "10")
+    with patch(
+        "app.api.create_chat_response",
+        new=AsyncMock(return_value="Ready."),
+    ) as model:
+        first = client.post(
+            "/chat/stream",
+            json={"query": "Hello", "session_id": "stream-limit-1"},
+        )
+        second = client.post(
+            "/chat",
+            json={"query": "Hello again", "session_id": "stream-limit-2"},
+        )
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.headers["x-rate-limit-reason"] == "minute"
+    model.assert_awaited_once()
+
+
+def test_chat_stream_rejects_disabled_and_invalid_requests(monkeypatch) -> None:
+    monkeypatch.setenv("PUBLIC_CHAT_ENABLED", "false")
+    request = {"query": "Hello", "session_id": "stream-disabled"}
+    assert client.post("/chat/stream", json=request).status_code == 403
+    monkeypatch.setenv("PUBLIC_CHAT_ENABLED", "true")
+    assert client.post(
+        "/chat/stream", json={"query": "   ", "session_id": "stream-invalid"}
+    ).status_code == 422
+
+
+def test_chat_stream_reports_safe_model_error() -> None:
+    with patch(
+        "app.api.create_chat_response",
+        new=AsyncMock(side_effect=LLMRequestError("private upstream detail")),
+    ):
+        response = client.post(
+            "/chat/stream",
+            json={"query": "Hello", "session_id": "stream-error"},
+        )
+    assert response.status_code == 200  # Headers precede the streamed error.
+    assert "event: progress" in response.text
+    assert "event: error" in response.text
+    assert "The language model service is temporarily unavailable." in response.text
+    assert "private upstream detail" not in response.text
+    assert "event: done" not in response.text
 
 
 def test_chat_rejects_blank_query() -> None:

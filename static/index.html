@@ -8,27 +8,57 @@
         content="A tool-using clinic operations agent powered by LangGraph and MCP."
     >
     <title>Intelligent Clinic Assistant</title>
-    <link rel="stylesheet" href="/static/style.css?v=20260930-10">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/style.css?v=20261022-4">
 </head>
 <body>
     <div class="page">
+        <nav class="topbar" aria-label="Main navigation">
+            <a class="brand" href="/" aria-label="Lumi home"><span class="brand-mark" aria-hidden="true">✦</span> lumi<span class="brand-divider">/</span><span class="brand-caption">Clinic companion</span></a>
+            <span class="prototype-label">A little guidance for your visit</span>
+        </nav>
         <header class="hero">
-            <div class="badge">AI-POWERED CLINIC OPERATIONS</div>
-            <h1>Intelligent Clinic Assistant</h1>
+            <div class="hero-copy">
+            <div class="badge">WELCOME. MAKE YOURSELF AT HOME.</div>
+            <h1>A little guidance<br><span>for your next visit.</span></h1>
             <p class="subtitle">
-                Browse clinic FAQs or ask Lumi about synthetic queue status,
-                procedure estimates, doctor schedules, and anonymous appointments.
+                A question before you arrive? Start here. Find helpful clinic
+                information, or ask Lumi to help you take the next step.
             </p>
+            <div class="hero-details"><span>✦ Clear, helpful answers</span><span>◈ Your privacy matters</span></div>
+            </div>
+            <figure class="welcome-illustration"><img src="/static/images/clinic-welcome.png" alt="A friendly illustrated receptionist welcomes visitors to a sunlit clinic with plants." width="1536" height="1024" fetchpriority="high"><figcaption>Illustration · Not an actual clinic</figcaption></figure>
         </header>
 
         <main>
+            <section class="clinic-intro" aria-labelledby="clinic-intro-heading">
+                <div><div class="result-label">GET TO KNOW THE CLINIC</div><h2 id="clinic-intro-heading">A clearer visit, from the start.</h2><p>Explore a multi-specialty outpatient clinic in one place. Find practical information before you arrive, check a doctor's recurring schedule, or ask Lumi a follow-up.</p></div>
+                <div class="specialty-summary">
+                    <h3>Four specialties, one helpful guide</h3>
+                    <ul class="specialty-list">
+                        <li><svg class="specialty-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 3v5a5 5 0 0 0 10 0V3M5 3h2m6 0h2M10 13v3a4 4 0 0 0 8 0v-2"/><circle cx="18" cy="11" r="3"/></svg> Family Medicine</li>
+                        <li><svg class="specialty-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4 20 8-8m-6 6 2 2 7-7-2-2-9 9Zm9-9 5-6 3-1-1 4-5 5m-2-2 2 2"/></svg> General Surgery</li>
+                        <li><svg class="specialty-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 8c2-3 4 3 6 0s4 3 6 0 4 3 6 0v12H3ZM3 14h18M7 4v2m5-3v3m5-2v2"/><circle cx="7" cy="17" r=".6"/><circle cx="12" cy="17" r=".6"/><circle cx="17" cy="17" r=".6"/></svg> Dermatology</li>
+                        <li><svg class="specialty-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9a6 6 0 0 1 12 0c0 4-4 5-5 8-.6 2-1.5 4-4 4-2 0-3-1.5-3-3m4-4c0-2 4-2 4-5a2 2 0 0 0-4 0"/></svg> ENT / Otolaryngology</li>
+                    </ul>
+                    <p class="synthetic-note">Illustrative clinic · All doctors and operational data are synthetic.</p>
+                </div>
+            </section>
+            <section class="visit-shortcuts" aria-label="Plan your visit">
+                <button class="visit-shortcut" type="button" data-visit-query="Show the doctors and their recurring schedules by specialty and location. Do these schedules confirm their presence today?"><span class="shortcut-icon" aria-hidden="true">▦</span><span><strong>Find a doctor's schedule</strong><small>Explore regular hours and locations</small></span><span class="shortcut-arrow" aria-hidden="true">↗</span></button>
+                <button class="visit-shortcut" type="button" data-visit-query="Show the current ticket number being served for Dr. Lee. Please show the called number, not a wait-time estimate."><span class="shortcut-icon" aria-hidden="true">№</span><span><strong>Check a queue number</strong><small>Start with Dr. Lee, or edit your question</small></span><span class="shortcut-arrow" aria-hidden="true">↗</span></button>
+                <button class="visit-shortcut" type="button" data-visit-query=""><span class="shortcut-icon" aria-hidden="true">✦</span><span><strong>Ask Lumi</strong><small>A little help with your visit</small></span><span class="shortcut-arrow" aria-hidden="true">↗</span></button>
+            </section>
+            <p id="shortcut-guidance" class="shortcut-guidance">Choose an option to prepare a question. Nothing is sent until you select Ask Lumi.</p>
+            <div class="workspace">
+            <div class="conversation-column">
             <section class="card" aria-labelledby="chat-heading">
                 <div class="section-header">
                     <div>
-                        <h2 id="chat-heading">Browse clinic FAQs</h2>
+                        <h2 id="chat-heading">How can we help you today?</h2>
                         <p id="mode-description">
-                            Explore ten basic clinic FAQs below. Current operational
-                            information is available through Lumi.
+                            Choose a topic below for a quick answer, or ask Lumi
+                            about schedules and appointment information.
                         </p>
                     </div>
                     <div class="header-actions">
@@ -46,21 +76,33 @@
                 </div>
 
                 <div id="mode-notice" class="mode-notice" role="status">
-                    <strong>Clinic FAQ mode</strong>
+                    <strong>Quick answers, whenever you need them</strong>
                     <span>
-                        Choose a basic clinic FAQ below. FAQ mode does not show
-                        current queue, procedure, schedule, or appointment status,
-                        and it does not use Lumi or consume agent request quota.
+                        These clinic FAQs are free to browse and do not use your
+                        Lumi request allowance. For current clinic information,
+                        switch to Ask Lumi.
                     </span>
                 </div>
 
                 <div id="session-strip" class="session-strip hidden">
                     <span class="status-dot" aria-hidden="true"></span>
-                    <span>Session</span>
+                    <span>Your conversation</span>
                     <code id="session-id"></code>
                 </div>
 
+                <section id="official-resources" class="official-resources hidden" aria-labelledby="official-resources-heading">
+                    <div><h3 id="official-resources-heading">Explore trusted information</h3><p>Search selected official websites, including CDC, NIH and WHO. External resources are not clinic policy or personal medical advice. Please don't enter patient information.</p></div>
+                    <button id="official-resources-button" class="secondary-button" type="button"><span aria-hidden="true">↗ </span>Find official health resources</button>
+                    <small>Prepares a question for you to review before sending.</small>
+                </section>
+
                 <div class="demo-buttons" aria-label="Example questions">
+                    <button
+                        class="example-button"
+                        type="button"
+                        data-demo-id="specialties-and-locations"
+                        data-question="Which specialties are shown in this sample clinic?"
+                    >Specialties &amp; locations</button>
                     <button
                         class="example-button"
                         type="button"
@@ -175,23 +217,40 @@
                 >Continue with clinic FAQs</button>
             </section>
 
+            </div>
+            <aside class="visit-guide" aria-label="Visitor guide">
+                <div class="guide-body"><div class="guide-heart" aria-hidden="true">♡</div><div class="result-label">ONE STEP AT A TIME</div><h2>You don't have to<br>figure it out alone.</h2><p>Start with a small question. We're here to help you find the information you need.</p>
+                    <div class="guide-item"><span aria-hidden="true">01</span><div><h3>Plan your visit</h3><p>Explore specialties, hours and check-in policies.</p></div></div>
+                    <div class="guide-item"><span aria-hidden="true">02</span><div><h3>Check with Lumi</h3><p>Ask about a doctor or available appointment slots.</p></div></div>
+                    <div class="guide-item"><span aria-hidden="true">03</span><div><h3>Know the limits</h3><p>Estimates can change. Viewing a slot is not a booking.</p></div></div>
+                    <div class="guide-note">This is a synthetic clinic prototype, not a real clinic or a medical advice service.</div>
+                    <section id="maps-panel" class="maps-panel hidden" aria-labelledby="maps-heading">
+                        <h3 id="maps-heading">Explore a real location</h3>
+                        <p>Google Maps lookup is separate from our fictional clinic. Include a real place and city. Do not enter patient information.</p>
+                        <form id="maps-form"><label for="maps-query">Place or nearby parking</label><input id="maps-query" maxlength="1000" required placeholder="Parking near Stanford Hospital, Palo Alto"><button id="maps-button" type="submit">Search places ↗</button></form>
+                        <div id="maps-result" aria-live="polite"></div>
+                    </section>
+                </div>
+            </aside>
+            </div>
+
             <section class="info-grid" aria-label="System capabilities">
                 <article class="info-card">
-                    <h3>MCP Tools</h3>
+                    <span class="feature-icon" aria-hidden="true">↗</span><h3>Connected clinic information</h3>
                     <p>
-                        Nine tools provide clinic operations, policy knowledge,
-                        and anonymous appointment capabilities.
+                        Find clinic policies, doctor schedules and appointment
+                        information in one place.
                     </p>
                 </article>
                 <article class="info-card">
-                    <h3>Session Memory</h3>
+                    <span class="feature-icon" aria-hidden="true">✦</span><h3>A conversation that follows along</h3>
                     <p>
-                        LangGraph keeps conversational context isolated by the
-                        session identifier shown above.
+                        Ask a follow-up without starting over. Lumi remembers
+                        what you've discussed in your conversation.
                     </p>
                 </article>
                 <article class="info-card">
-                    <h3>Privacy by Design</h3>
+                    <span class="feature-icon" aria-hidden="true">◈</span><h3>Privacy by design</h3>
                     <p>
                         The prototype uses synthetic public data and stores no
                         patient names, insurance numbers, or medical records.
@@ -201,11 +260,11 @@
         </main>
 
         <footer>
-            <p>Intelligent clinic operations and knowledge prototype</p>
+            <p>Portfolio prototype · All clinic information is synthetic. Not medical advice.</p>
             <p><a href="/docs">API documentation</a> · <a href="/health">Health check</a></p>
         </footer>
     </div>
 
-    <script src="/static/app.js?v=20260930-10"></script>
+    <script src="/static/app.js?v=20261022-4"></script>
 </body>
 </html>
