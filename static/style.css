@@ -525,5 +525,102 @@ h1 span { color: #657b60; }
 textarea { background: #fffdfa; border-color: #ded9cb; }
 .answer { color: #534e42; }
 .grounding-note { border-color: var(--line); }
-@media (max-width: 900px) { .hero { gap: 20px; } .workspace { grid-template-columns: minmax(0, 1fr) 235px; gap: 18px; } }
+/* Conversation first; keep the welcome illustration as a smaller accent. */
+.hero { padding: 26px 0; gap: 40px; grid-template-columns: minmax(0, 1.5fr) minmax(200px, .7fr); }
+.hero h1 { font-size: clamp(30px, 3.6vw, 44px); margin: 10px 0 12px; }
+.hero .subtitle { font-size: 14px; max-width: 530px; }
+.hero-details { margin-top: 13px; }
+.welcome-illustration { max-width: 290px; justify-self: end; }
+.hero-cta { display: inline-flex; align-items: center; gap: 24px; margin-top: 18px; color: var(--primary); font-size: 13px; font-weight: 650; text-underline-offset: 5px; }
+.clinic-intro { margin-top: 28px; }
+.card[aria-labelledby="chat-heading"] { display: flex; flex-direction: column; }
+.card[aria-labelledby="chat-heading"] .section-header { order: 0; }
+.session-strip, .mode-notice { order: 1; }
+.agent-scenarios, .demo-buttons { order: 2; }
+#chat-form { order: 3; }
+.official-resources { order: 4; margin: 24px 0 0; }
+.agent-scenarios { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.agent-scenarios > span, .agent-scenarios > small { grid-column: 1 / -1; }
+.agent-scenarios > span { margin-bottom: 4px; }
+.agent-scenarios button { background: #f7f6ef; color: var(--ink); text-align: left; padding: 13px; border: 1px solid var(--line); border-radius: 12px; font-size: 12px; line-height: 1.6; }
+.agent-scenarios button span { color: var(--primary); }
+.agent-scenarios small { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.result-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+.result-cards:empty { display: none; }
+.appointment-card { min-width: 0; padding: 20px; border: 1px solid var(--line); background: #f9f8f2; border-radius: 18px; }
+.appointment-card h3 { font-family: Georgia, serif; font-weight: 400; font-size: 22px; margin: 12px 0 16px; }
+.appointment-card.reserved { border-color: #a5b496; background: #f0f4e9; }
+.appointment-card dl, #booking-summary dl { margin: 16px 0; font-size: 13px; }
+.appointment-card dl div, #booking-summary dl div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding: 9px 0; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+.appointment-card button { width: 100%; margin-top: 8px; font-size: 13px; }
+.appointment-card button, #confirm-booking { background: var(--primary); color: white; border: 1px solid var(--primary); border-radius: 14px; padding: 12px 16px; cursor: pointer; font: inherit; }
+.appointment-card button:hover, #confirm-booking:hover { filter: brightness(.92); }
+.appointment-card button:disabled, #confirm-booking:disabled { opacity: .6; cursor: wait; }
+.result-cards:not(:empty) { margin-bottom: 20px; }
+.appointment-card .source-note { font-size: 10px; overflow-wrap: anywhere; color: var(--muted); margin-bottom: 0; }
+.card-notice { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.booking-reference { font-family: ui-monospace, monospace; overflow-wrap: anywhere; font-weight: 600; }
+#booking-dialog { width: min(520px, calc(100% - 32px)); max-height: calc(100dvh - 48px); padding: 28px; border: 1px solid var(--line); border-radius: 24px; color: var(--ink); background: #fffdf8; box-shadow: 0 24px 80px #343c3240; }
+#booking-dialog::backdrop { background: #2a342b80; }
+#booking-dialog h2 { font-family: Georgia, serif; font-weight: 400; font-size: 30px; margin: 14px 0; }
+#booking-dialog-note { font-size: 12px; line-height: 1.8; color: var(--muted); }
+.dialog-close { float: right; margin: -8px -8px 8px 8px; }
+.booking-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+.hidden { display: none !important; }
+@media (max-width: 900px) { .hero { gap: 20px; } .workspace { grid-template-columns: minmax(0, 1fr) 235px; gap: 18px; } .agent-scenarios { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .hero { grid-template-columns: 1fr; padding-top: 28px; gap: 24px; } .hero-copy { text-align: center; } h1 { font-size: 40px; } .subtitle { margin: 0 auto; } .hero-details { justify-content: center; font-size: 11px; } .welcome-illustration { width: min(100%, 380px); justify-self: center; } .welcome-illustration img { border-radius: 50px 50px 20px 20px; } .workspace { grid-template-columns: 1fr; } .section-header h2 { font-size: 24px; } }
+@media (max-width: 720px) { .hero { padding: 22px 0; } .welcome-illustration { display: none; } .hero-details { display: none; } .hero h1 { font-size: 32px; } .result-cards { grid-template-columns: 1fr; } .agent-scenarios { grid-template-columns: 1fr; } #booking-dialog { padding: 22px; } }
+
+/* Direct tasks, complete FAQs, and an independent conversation alongside. */
+#clinic-actions { margin-bottom: 26px; scroll-margin-top: 20px; }
+#clinic-actions h2, #clinic-panel h2 { font-family: Georgia, serif; font-weight: 400; font-size: 30px; margin: 10px 0 20px; }
+.clinic-action-buttons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.clinic-action-buttons button { padding: 20px; text-align: left; color: var(--ink); border: 1px solid var(--line); border-radius: 18px; background: #fffdf8; cursor: pointer; }
+.clinic-action-buttons button > span { display: block; font-size: 25px; margin-bottom: 12px; color: var(--primary); }
+.clinic-action-buttons strong { display: block; font-size: 16px; }
+.clinic-action-buttons small { display: block; color: var(--muted); font-size: 12px; margin-top: 9px; line-height: 1.6; }
+.clinic-action-buttons button:hover, .clinic-action-buttons button[aria-pressed="true"] { border-color: var(--primary); background: #f0f3e9; }
+.direct-note, #clinic-panel-description { font-size: 13px; color: var(--muted); line-height: 1.7; }
+.clinic-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
+.clinic-filters label { display: block; font-size: 12px; margin-bottom: 8px; }
+.clinic-filters label span { color: var(--muted); }
+.clinic-filters select, .clinic-filters input { width: 100%; min-width: 0; min-height: 45px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: #fffefa; color: var(--ink); font: inherit; font-size: 14px; }
+select:focus-visible, input:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+#clinic-lookup-button { padding: 12px 18px; background: var(--primary); color: white; border: 1px solid var(--primary); border-radius: 12px; font: inherit; cursor: pointer; }
+#clinic-lookup-button:disabled, .clinic-action-buttons button:disabled { opacity: .6; cursor: wait; }
+.workspace { grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr); }
+#lumi-panel { display: block; }
+#lumi-panel .guide-body > p { margin-bottom: 16px; }
+#lumi-panel #chat-form { margin-top: 16px; padding-top: 0; border-top: 0; }
+#lumi-panel textarea { min-height: 145px; }
+#lumi-panel .actions { flex-wrap: wrap; gap: 10px; }
+#lumi-panel .session-strip { margin-top: 14px; font-size: 11px; }
+#lumi-panel .official-resources { padding: 14px; }
+#lumi-panel #reset-button { background: transparent; }
+.operation-card { grid-column: 1 / -1; }
+.schedule-table { overflow-x: auto; }
+.schedule-table table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+.schedule-table caption { text-align: left; color: var(--muted); font-size: 12px; padding-bottom: 12px; }
+.schedule-table th, .schedule-table td { padding: 12px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.schedule-table th { color: var(--muted); font-size: 12px; }
+.queue-number { font-family: Georgia, serif; font-size: 64px; color: var(--primary); margin: 8px 0 20px; }
+.slot-group { grid-column: 1 / -1; }
+.slot-date { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+.time-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; max-width: 800px; }
+.appointment-card .time-slot { width: auto; margin: 0; background: #fffefa; color: var(--primary); border: 1px solid #a7b59b; border-radius: 10px; padding: 14px 10px; font-size: 16px; font-weight: 600; }
+.appointment-card .time-slot:hover, .appointment-card .time-slot:focus-visible { background: var(--primary); color: white; filter: none; }
+@media (max-width: 620px) { .time-slots { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } }
+#clinic-panel, #answer-section, #chat-heading, #lumi-panel { scroll-margin-top: 20px; }
+#cancel-reservation-dialog { width: min(520px, calc(100% - 32px)); max-height: calc(100dvh - 48px); padding: 28px; border: 1px solid var(--line); border-radius: 24px; color: var(--ink); background: #fffdf8; box-shadow: 0 24px 80px #343c3240; }
+#cancel-reservation-dialog::backdrop { background: #2a342b80; }
+#cancel-reservation-dialog h2 { font-family: Georgia, serif; font-weight: 400; font-size: 28px; margin: 14px 0; }
+#cancel-reservation-note { color: var(--muted); font-size: 13px; line-height: 1.7; }
+#cancel-reservation-summary dl div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+#confirm-cancellation { padding: 12px 16px; border-radius: 12px; border: 1px solid #8a4a3b; background: #8a4a3b; color: white; font: inherit; cursor: pointer; }
+.appointment-card.archived-reservation { background: #f2f1ed; border-color: #d8d6cf; color: #777268; }
+.appointment-card .cancel-reservation-button { color: #8a4a3b; background: transparent; border-color: #c9aa9f; }
+@media (min-width: 621px) and (max-width: 900px) { .clinic-action-buttons { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .workspace { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .clinic-action-buttons, .clinic-filters { grid-template-columns: 1fr; } .clinic-action-buttons button { padding: 16px; display: grid; grid-template-columns: 35px 1fr; gap: 0 10px; } .clinic-action-buttons button > span { grid-row: span 2; margin: 0; } .clinic-action-buttons small { margin-top: 5px; } .clinic-filters { gap: 14px; } .schedule-table th, .schedule-table td { padding: 10px 5px; font-size: 12px; } }

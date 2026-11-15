@@ -80,3 +80,4 @@ class InMemoryRateLimiter:
 
 
 chat_rate_limiter = InMemoryRateLimiter()
+clinic_rate_limiter = InMemoryRateLimiter()

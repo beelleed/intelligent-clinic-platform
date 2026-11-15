@@ -9,6 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from mcp_servers.clinic_time import clinic_today
+from mcp_servers.demo_data import DEMO_DOCTORS, DEMO_SCHEDULES
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -54,82 +55,76 @@ def _initialize_database(connection: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS reservations (
             booking_reference TEXT PRIMARY KEY,
-            slot_id INTEGER NOT NULL UNIQUE,
+            slot_id INTEGER NOT NULL,
             created_at TEXT NOT NULL,
+            owner_hash TEXT,
+            cancelled_at TEXT,
             FOREIGN KEY (slot_id) REFERENCES appointment_slots(id)
         );
         """
     )
     connection.execute("PRAGMA foreign_keys = ON")
+    _migrate_reservations(connection)
 
     slot_count = connection.execute(
         "SELECT COUNT(*) FROM appointment_slots"
     ).fetchone()[0]
     if slot_count == 0:
         _seed_demo_slots(connection)
-    else:
-        _upgrade_legacy_demo_slots(connection)
+    elif os.getenv("CLINIC_REFRESH_DEMO_DATA", "true").strip().lower() == "true":
+        expected = {doctor_id: name for doctor_id, name, _ in DEMO_DOCTORS}
+        existing = connection.execute("SELECT DISTINCT doctor_id, doctor_name FROM appointment_slots").fetchall()
+        if all(expected.get(row[0]) == row[1] for row in existing):
+            _seed_demo_slots(connection)
 
     connection.commit()
 
 
+def _migrate_reservations(connection: sqlite3.Connection) -> None:
+    """Keep existing references while allowing a cancelled slot to be rebooked."""
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(reservations)")}
+    if "cancelled_at" not in columns:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("ALTER TABLE reservations RENAME TO legacy_reservations")
+        connection.execute("""CREATE TABLE reservations (
+            booking_reference TEXT PRIMARY KEY, slot_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL, owner_hash TEXT, cancelled_at TEXT,
+            FOREIGN KEY (slot_id) REFERENCES appointment_slots(id))""")
+        connection.execute("""INSERT INTO reservations (booking_reference, slot_id, created_at)
+            SELECT booking_reference, slot_id, created_at FROM legacy_reservations""")
+        connection.execute("DROP TABLE legacy_reservations")
+    connection.execute("""CREATE UNIQUE INDEX IF NOT EXISTS active_reservation_slot
+        ON reservations(slot_id) WHERE cancelled_at IS NULL""")
+    connection.execute("CREATE INDEX IF NOT EXISTS reservation_owner ON reservations(owner_hash)")
+
+
 def _seed_demo_slots(connection: sqlite3.Connection) -> None:
-    """Create future, synthetic appointment slots without patient data."""
+    """Fill 28 upcoming days from recurring hours, preserving bookings and IDs."""
     today = clinic_today()
     slots = []
-    for weekday, doctor_id, doctor_name in (
-        (4, "dr-lee", "Dr. Amanda Lee"),
-        (1, "dr-chen", "Dr. Michael Chen"),
-        (3, "dr-rivera", "Dr. Sofia Rivera"),
-        (4, "dr-park", "Dr. Daniel Park"),
-    ):
-        days_ahead = (weekday - today.weekday()) % 7 or 7
-        appointment_date = (today + timedelta(days=days_ahead)).isoformat()
-        for start_time, end_time in (("09:00", "09:30"), ("09:30", "10:00")):
-            slots.append(
-                (
-                    doctor_id,
-                    doctor_name,
-                    appointment_date,
-                    start_time,
-                    end_time,
-                )
-            )
+    names = {doctor_id: name for doctor_id, name, _ in DEMO_DOCTORS}
+    weekdays = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+    for offset in range(29):
+        day = today + timedelta(days=offset)
+        for doctor_id, weekday, start, end, _ in DEMO_SCHEDULES:
+            if weekdays[day.weekday()] != weekday:
+                continue
+            start_hour, start_minute = map(int, start.split(":"))
+            end_hour, end_minute = map(int, end.split(":"))
+            for minute in range(start_hour * 60 + start_minute, end_hour * 60 + end_minute, 30):
+                slots.append((doctor_id, names[doctor_id], day.isoformat(),
+                              f"{minute // 60:02d}:{minute % 60:02d}",
+                              f"{(minute + 30) // 60:02d}:{(minute + 30) % 60:02d}"))
 
     connection.executemany(
         """
         INSERT INTO appointment_slots (
             doctor_id, doctor_name, appointment_date, start_time, end_time
-        ) VALUES (?, ?, ?, ?, ?)
+        ) SELECT ?, ?, ?, ?, ?
+        WHERE NOT EXISTS (
+            SELECT 1 FROM appointment_slots
+            WHERE doctor_id = ? AND appointment_date = ? AND start_time = ?
+        )
         """,
-        slots,
-    )
-
-
-def _upgrade_legacy_demo_slots(connection: sqlite3.Connection) -> None:
-    """Add new specialties once to a database with the original demo slots."""
-    rows = connection.execute(
-        "SELECT DISTINCT doctor_id, doctor_name FROM appointment_slots ORDER BY doctor_id"
-    ).fetchall()
-    if [(row["doctor_id"], row["doctor_name"]) for row in rows] != [
-        ("dr-chen", "Dr. Michael Chen"),
-        ("dr-lee", "Dr. Amanda Lee"),
-    ]:
-        return
-
-    today = clinic_today()
-    slots = []
-    for weekday, doctor_id, doctor_name in (
-        (3, "dr-rivera", "Dr. Sofia Rivera"),
-        (4, "dr-park", "Dr. Daniel Park"),
-    ):
-        days_ahead = (weekday - today.weekday()) % 7 or 7
-        appointment_date = (today + timedelta(days=days_ahead)).isoformat()
-        for start_time, end_time in (("09:00", "09:30"), ("09:30", "10:00")):
-            slots.append((doctor_id, doctor_name, appointment_date, start_time, end_time))
-    connection.executemany(
-        """INSERT INTO appointment_slots
-           (doctor_id, doctor_name, appointment_date, start_time, end_time)
-           VALUES (?, ?, ?, ?, ?)""",
-        slots,
+        [(*slot, slot[0], slot[2], slot[3]) for slot in slots],
     )

@@ -27,7 +27,7 @@ async def test_tools_are_discoverable_with_valid_input_schemas():
         result = await client.list_tools()
 
     tools = {tool.name: tool for tool in result.tools}
-    assert set(tools) == {"list_available_appointments", "book_appointment"}
+    assert set(tools) == {"list_available_appointments", "book_appointment", "list_owned_appointments", "cancel_owned_appointment"}
     assert tools["book_appointment"].input_schema["required"] == ["slot_id"]
     assert (
         tools["book_appointment"].input_schema["properties"]["slot_id"]["type"]
@@ -52,7 +52,10 @@ async def test_list_and_book_anonymous_appointment():
     assert reservation.is_error is False
     assert reservation.structured_content["booking_reference"].startswith("APT-")
     assert reservation.structured_content["slot"] == slot
-    assert len(availability_after.structured_content["slots"]) == 7
+    before = availability.structured_content["slots"]
+    after = availability_after.structured_content["slots"]
+    assert len(after) == len(before) - 1
+    assert slot["slot_id"] not in {item["slot_id"] for item in after}
 
 
 @pytest.mark.anyio
@@ -65,9 +68,10 @@ async def test_specialty_slots_match_recurring_days_and_support_filter():
     from datetime import date
 
     slots = result.structured_content["slots"]
-    assert len(slots) == 2
+    assert len(slots) >= 12
     assert all(slot["doctor_name"] == "Dr. Sofia Rivera" for slot in slots)
-    assert all(date.fromisoformat(slot["appointment_date"]).weekday() == 3 for slot in slots)
+    assert all(date.fromisoformat(slot["appointment_date"]).weekday() in {0, 3} for slot in slots)
+    assert all(slot["start_time"] >= ("13:00" if date.fromisoformat(slot["appointment_date"]).weekday() == 0 else "09:00") for slot in slots)
 
 
 @pytest.mark.anyio
@@ -84,17 +88,42 @@ async def test_unknown_doctor_filter_is_an_error_not_empty_availability():
 
 def test_legacy_demo_appointments_gain_new_specialties_once():
     with connect() as connection:
+        original_count = connection.execute("SELECT COUNT(*) FROM appointment_slots").fetchone()[0]
         connection.execute("DELETE FROM appointment_slots WHERE doctor_id IN ('dr-rivera', 'dr-park')")
         connection.execute("UPDATE appointment_slots SET is_available = 0 WHERE id = 1")
         connection.commit()
 
     with connect() as connection:
-        assert connection.execute("SELECT COUNT(*) FROM appointment_slots").fetchone()[0] == 8
+        assert connection.execute("SELECT COUNT(*) FROM appointment_slots").fetchone()[0] == original_count
         assert connection.execute(
             "SELECT is_available FROM appointment_slots WHERE id = 1"
         ).fetchone()[0] == 0
     with connect() as connection:
-        assert connection.execute("SELECT COUNT(*) FROM appointment_slots").fetchone()[0] == 8
+        assert connection.execute("SELECT COUNT(*) FROM appointment_slots").fetchone()[0] == original_count
+
+
+def test_demo_covers_ent_november_24_and_preserves_booked_slots_on_refresh(monkeypatch):
+    from datetime import date
+    from mcp_servers.clinic_appointments import database
+
+    monkeypatch.setattr(database, "clinic_today", lambda: date(2026, 11, 14))
+    with connect() as connection:
+        rows = connection.execute("SELECT id, start_time, end_time FROM appointment_slots WHERE doctor_id='dr-park' AND appointment_date='2026-11-24' ORDER BY start_time").fetchall()
+        assert [(row["start_time"], row["end_time"]) for row in rows] == [
+            ("13:00", "13:30"), ("13:30", "14:00"), ("14:00", "14:30"), ("14:30", "15:00"),
+            ("15:00", "15:30"), ("15:30", "16:00"), ("16:00", "16:30"), ("16:30", "17:00")]
+        slot_id = rows[0]["id"]
+        connection.execute("UPDATE appointment_slots SET is_available=0 WHERE id=?", (slot_id,))
+        connection.execute("INSERT INTO reservations (booking_reference, slot_id, created_at) VALUES ('APT-PRESERVE', ?, '2026-11-14T12:00:00+00:00')", (slot_id,))
+        connection.commit()
+    monkeypatch.setattr(database, "clinic_today", lambda: date(2026, 11, 21))
+    with connect() as connection:
+        assert connection.execute("SELECT is_available FROM appointment_slots WHERE id=?", (slot_id,)).fetchone()[0] == 0
+        assert connection.execute("SELECT slot_id FROM reservations WHERE booking_reference='APT-PRESERVE'").fetchone()[0] == slot_id
+        assert connection.execute("SELECT COUNT(*) FROM appointment_slots WHERE appointment_date > '2026-12-12'").fetchone()[0] > 0
+        count = connection.execute("SELECT COUNT(*) FROM appointment_slots").fetchone()[0]
+    with connect() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM appointment_slots").fetchone()[0] == count
 
 
 @pytest.mark.anyio
@@ -116,6 +145,7 @@ async def test_booking_unavailable_slot_returns_controlled_tool_error():
 
 @pytest.fixture
 def fixed_clinic_clock(monkeypatch):
+    monkeypatch.setenv("CLINIC_REFRESH_DEMO_DATA", "false")
     # UTC has crossed midnight; Pacific is still October 8 at 17:30.
     fixed = datetime(2026, 10, 9, 0, 30, tzinfo=UTC)
 

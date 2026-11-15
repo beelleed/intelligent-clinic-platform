@@ -5,14 +5,19 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.models import ChatRequest, ChatResponse, QueryText
-from app.rate_limit import chat_rate_limiter
+from app.services.result_cards import BookingConfirmation, card_context, verify_selection, Slot
+from app.services.chat import confirm_appointment_selection
+from app.rate_limit import chat_rate_limiter, clinic_rate_limiter
+from app.services.clinic_actions import ClinicLookup, doctor_directory, lookup
+from app.services.booking_owner import browser_owner, booking_owner_context, check_booking_origin
+from app.services.my_appointments import CancelReservation, my_appointments, cancel_appointment
 from app.services.maps import maps_enabled, search_places
 from app.services.tavily import tavily_enabled
 from app.services.chat import (
@@ -298,43 +303,146 @@ def _chat_error(exc: Exception) -> tuple[int, str]:
     return 500, "An unexpected server error occurred."
 
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
+async def _chat_result(request: ChatRequest, owner_hash: str | None = None) -> ChatResponse:
+    cards = []
+    token = card_context.set((request.session_id, cards))
+    owner_token = booking_owner_context.set(owner_hash)
+    try:
+        response = await create_chat_response(request.query, request.session_id)
+        return ChatResponse(response=response, cards=cards)
+    finally:
+        card_context.reset(token)
+        booking_owner_context.reset(owner_token)
+
+
+def _check_clinic_access(request: Request) -> None:
+    if not _public_chat_enabled():
+        raise HTTPException(status_code=403, detail="Clinic actions are currently unavailable. You can still browse all clinic FAQs.")
+    decision = clinic_rate_limiter.check(
+        _client_ip(request),
+        per_minute=_positive_int_environment("CLINIC_RATE_LIMIT_PER_MINUTE", 30),
+        per_day=_positive_int_environment("CLINIC_RATE_LIMIT_PER_DAY", 200),
+    )
+    if not decision.allowed:
+        raise HTTPException(status_code=429, detail="The clinic action limit has been reached. Please try again later.",
+            headers={"Retry-After": str(decision.retry_after), "X-Rate-Limit-Reason": decision.reason or "unknown"})
+
+
+@app.get("/clinic/doctors")
+async def clinic_doctors(request: Request):
+    _check_clinic_access(request)
+    try:
+        return await doctor_directory()
+    except Exception as exc:
+        LOGGER.warning("Doctor directory unavailable (error_type=%s)", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Doctor information is temporarily unavailable. Please try again.") from exc
+
+
+@app.post("/clinic/lookup", response_model=ChatResponse)
+async def clinic_lookup(payload: ClinicLookup, request: Request):
+    _check_clinic_access(request)
+    try:
+        return await lookup(payload)
+    except ValueError as exc:
+        # A missing doctor is a user selection error; upstream content stays private.
+        if payload.action != "appointments" and not payload.doctor_id:
+            raise HTTPException(status_code=400, detail="Select a doctor first.") from exc
+        raise HTTPException(status_code=502, detail="Clinic information is temporarily unavailable. Please try again.") from exc
+    except Exception as exc:
+        LOGGER.warning("Clinic lookup failed (error_type=%s)", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Clinic information is temporarily unavailable. Please try again.") from exc
+
+
+@app.post("/appointments/confirm", response_model=ChatResponse)
+async def confirm_appointment(request: BookingConfirmation, http_request: Request, http_response: Response):
+    _check_clinic_access(http_request)
+    check_booking_origin(http_request)
+    http_response.headers["Cache-Control"] = "no-store"
+    try:
+        slot_id = verify_selection(request.selection_token, request.session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        owner_hash = browser_owner(http_request, http_response)
+        reservation = await confirm_appointment_selection(slot_id, request.session_id, owner_hash)
+        slot = Slot.model_validate(reservation["slot"]).model_dump()
+    except MCPConnectionError as exc:
+        raise HTTPException(status_code=502, detail="Appointment tools are temporarily unavailable.") from exc
+    except Exception as exc:
+        LOGGER.warning("Appointment confirmation failed (error_type=%s)", type(exc).__name__)
+        raise HTTPException(status_code=409, detail="This slot could not be reserved. Refresh available times before trying again.") from exc
+    return ChatResponse(response="Your demo appointment is reserved. No patient information was collected.",
+        cards=[{"kind": "reservation", "slot": slot,
+                "booking_reference": reservation["booking_reference"],
+                "source": "clinic_appointments_book_appointment"}])
+
+
+@app.get("/appointments/mine", response_model=ChatResponse)
+async def owned_appointments(request: Request, response: Response):
+    _check_clinic_access(request)
+    owner_hash = browser_owner(request, response)
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        cards = await my_appointments(owner_hash)
+    except Exception as exc:
+        LOGGER.warning("Reservation lookup failed (error_type=%s)", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Your reservations are temporarily unavailable. Please try again.") from exc
+    return ChatResponse(response="Your demo reservations saved in this browser." if cards else "No reservations saved in this browser yet. Book an appointment to get started.", cards=cards)
+
+
+@app.post("/appointments/cancel", response_model=ChatResponse)
+async def cancel_owned_reservation(payload: CancelReservation, request: Request, response: Response):
+    _check_clinic_access(request)
+    check_booking_origin(request)
+    owner_hash = browser_owner(request, response)
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        card = await cancel_appointment(payload.booking_reference, owner_hash)
+    except Exception as exc:
+        LOGGER.warning("Reservation cancellation failed (error_type=%s)", type(exc).__name__)
+        raise HTTPException(status_code=409, detail="This reservation could not be cancelled. Refresh My appointments before trying again.") from exc
+    return ChatResponse(response="Your demo reservation is cancelled and the time is available again.", cards=[card])
+
+
+@app.post("/chat", response_model=ChatResponse, response_model_exclude_defaults=True)
+async def chat(request: ChatRequest, http_request: Request, http_response: Response) -> ChatResponse:
     """Run one session-scoped LangGraph agent turn with MCP tools."""
     _check_chat_access(http_request)
     try:
-        response = await create_chat_response(request.query, request.session_id)
+        result = await _chat_result(request, browser_owner(http_request, http_response))
     except Exception as exc:
         status, detail = _chat_error(exc)
         raise HTTPException(status_code=status, detail=detail) from exc
 
-    return ChatResponse(response=response)
+    return result
 
 
-def _sse_event(name: str, data: dict[str, str]) -> str:
+def _sse_event(name: str, data: dict[str, object]) -> str:
     return f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 @app.post("/chat/stream")
-async def chat_stream(request: ChatRequest, http_request: Request) -> StreamingResponse:
+async def chat_stream(request: ChatRequest, http_request: Request, http_response: Response) -> StreamingResponse:
     """Stream progress and a final answer; model tokens are not streamed."""
     _check_chat_access(http_request)
+    owner_hash = browser_owner(http_request, http_response)
 
     async def events() -> AsyncIterator[str]:
         yield _sse_event("progress", {"message": "Lumi is checking clinic sources..."})
         try:
-            response = await create_chat_response(request.query, request.session_id)
+            result = await _chat_result(request, owner_hash)
         except Exception as exc:
             status, detail = _chat_error(exc)
             yield _sse_event("error", {"message": detail, "status": str(status)})
             return
-        yield _sse_event("answer", {"response": response})
+        yield _sse_event("answer", result.model_dump(exclude_defaults=True))
         yield _sse_event("done", {})
 
     return StreamingResponse(
         events(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no",
+                 **({"Set-Cookie": http_response.headers["set-cookie"]} if "set-cookie" in http_response.headers else {})},
     )
 
 

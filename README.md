@@ -15,8 +15,10 @@ search and its visitor-facing entry were deployed and live-tested on 2026-10-22.
 The previous
 `intelligent-clinic-assistant` service is retained separately and was not updated.
 
-The browser opens in a **Clinic FAQ mode that does not call OpenAI**. Visitors
-can optionally switch to **Lumi**, a virtual clinic guide that uses a LangGraph
+The updated interface shows **direct clinic actions and all eleven FAQs**,
+with an independent **Ask Lumi** conversation alongside. Booking, schedules,
+queue lookups, and fixed FAQs do not call a language model. Lumi is a virtual
+clinic guide that uses a LangGraph
 agent to select from nine tools exposed by three MCP servers. Lumi can answer
 source-grounded policy questions, read synthetic queue and procedure status,
 check doctor schedules, and reserve anonymous synthetic appointment slots while
@@ -28,16 +30,83 @@ retaining context within the browser session.
 
 ---
 
+### Direct actions and appointment cards (local branch)
+
+**Book an appointment** opens specialty, doctor, and available-date controls.
+Selecting a date loads compact, clickable time buttons automatically. The
+doctor, date, and timezone appear once per group; choosing a time opens the
+confirmation summary. Demo slots are generated in 30-minute intervals from
+the same recurring hours as the schedule tools, across a rolling 28-day window.
+Refreshing adds missing demo slots without reopening booked ones or changing
+existing reservation references. `CLINIC_REFRESH_DEMO_DATA=false` disables the
+rolling refresh for an already initialized database.
+**View doctor schedules** and **Check queue numbers** retrieve typed data
+directly from MCP and display the selected doctor's information. All eleven
+FAQs remain visible and return fixed answers even while the independent Lumi
+form is available. Free-form questions are optional.
+
+`GET /clinic/doctors` returns the directory; `POST /clinic/lookup` accepts
+`action` (`appointments`, `schedule`, or `queue`), `session_id`, and optional
+`doctor_id` and `appointment_date`. Schedules and queues require a doctor.
+Neither route creates or invokes a language model. Direct availability returns
+`available_dates`, `selected_date`, and up to 48 time choices for the selected
+date. Without a date, it selects the earliest available day. Current-turn agent
+MCP results retain their eight-choice limit. Both paths group time buttons by
+doctor, date, and timezone with the tool source attached.
+Model-generated text and old conversation results cannot create actionable cards.
+
+Selecting a time button opens a summary without reserving anything.
+**Confirm demo reservation** sends a signed, session-bound selection to
+`POST /appointments/confirm`, which calls the booking MCP directly without
+another model request. Selections expire after 15 minutes (or an application
+restart). Direct reads and booking confirmations share the public-chat access
+switch and their own IP quota: `CLINIC_RATE_LIMIT_PER_MINUTE=30` and
+`CLINIC_RATE_LIMIT_PER_DAY=200` by default. They do not consume the AI chat quota. Expired,
+unavailable, or already-booked slots return controlled errors. There is no
+automatic retry of a booking write. Successful bookings display the actual
+tool-returned reference; no patient information is requested.
+
+Both chat response formats may include an optional `cards` array; JSON clients
+that only use `response` continue to work. Source updates must be deployed
+separately from Git pushes.
+Chat history remains in process memory; this change does not add durable sessions.
+
+### My appointments
+
+The **My appointments** button lists upcoming, past, and cancelled reservations
+created in the current browser. An opaque HttpOnly, SameSite cookie supplies
+anonymous ownership independently of the resettable chat session; SQLite stores
+only its hash. No name, phone number, insurance details, or account is needed.
+Refreshing or starting a new chat preserves access. Clearing site data, using
+another browser, or losing the hosted demo database removes access. Older
+reservations created before browser ownership was added cannot be claimed by
+their public booking reference.
+
+`GET /appointments/mine` lists browser-owned records; `POST /appointments/cancel`
+requires explicit user confirmation and the same browser cookie. Cancellation
+preserves the record and atomically releases the slot. Repeated cancellation
+cannot release someone else's later booking of that slot. Only upcoming active
+reservations can be cancelled. These routes use the clinic action quota and
+`Cache-Control: no-store`. Two private MCP management tools support the routes;
+they are excluded from the nine tools exposed to the model, which cannot select
+or supply ownership credentials. Direct and model-driven website bookings both
+receive ownership from the application.
+
+The local database survives application restarts. Cloud Run's container-local
+SQLite database remains ephemeral; this public portfolio demo may reset its
+reservation data when an instance is replaced. A durable shared database is
+needed before treating these as real clinic bookings.
+
 ## ✨ Highlights
 
-- 📚 FAQ-first interface with eleven fixed, source-attributed clinic answers
+- 📚 Direct clinic actions, eleven visible FAQs, and optional free-form conversation
 - 🏥 Four synthetic specialties: Family Medicine, General Surgery,
   Dermatology, and Otolaryngology (ENT)
 - 💡 Lumi virtual clinic guide with free-form, multi-turn conversation
 - 🧠 LangGraph agent with session-scoped memory and multi-tool chaining
 - 🧭 Opt-in LangGraph supervisor with three scoped, tool-using specialists
 - ⚡ Persistent per-instance MCP connections and a reusable compiled agent graph
-- 🔌 Three MCP servers exposing nine typed tools
+- 🔌 Three MCP servers with nine agent tools and two private reservation-management tools
 - 🔎 OpenAI-powered semantic retrieval over a persistent FAISS index
 - 🗄️ Synthetic queue, procedure, schedule, and appointment data in SQLite
 - 🕒 Pacific Time presentation with UTC timestamp storage
@@ -45,7 +114,7 @@ retaining context within the browser session.
 - 🛡️ Input validation, IP rate limiting, safe errors, and a public chat switch
 - 📊 Original RAG pipeline and 30-query retrieval evaluation retained
 - 🐳 Multi-stage, non-root Docker image
-- ✅ 157 automated tests covering the API, MCP integration, retrieval, memory,
+- ✅ 184 automated tests covering direct actions, reservation ownership, cancellation, the API, MCP integration, retrieval, memory,
   validation, rate limits, failure handling, and container files
 
 ---
@@ -137,7 +206,8 @@ medical-advice boundary, and instruction not to enter patient information.
 
 ![Current Lumi visitor interface](images/lumi_visitor_20261022.png)
 
-FAQ mode is the default landing page. It provides eleven predefined questions
+All clinic FAQs remain visible on the home page, including when public chat is
+disabled. They provide eleven predefined questions
 covering sample specialties, clinic hours, parking, check-in and late arrival,
 cancellations, appointment requests, wait-time estimates, procedure-status
 labels, privacy, urgent help, and sample contact information.
@@ -173,7 +243,7 @@ new remaining-time estimate. Public timestamps are displayed in Pacific Time.
 
 ```mermaid
 flowchart TB
-    Visitor[Browser visitor] --> UI[FAQ-first HTML / CSS / JavaScript]
+    Visitor[Browser visitor] --> UI[Conversation-first HTML / CSS / JavaScript]
 
     UI -->|Clinic FAQ choice| Demo[POST /demo/query]
     Demo --> FAQ[11 fixed source-attributed answers]
@@ -786,7 +856,7 @@ directory. Remote services are mocked in the automated suite; real Tavily
 smoke checks are described separately above. Google Maps remains unverified:
 
 ```text
-157 passed, 1 warning
+184 passed, 1 warning
 ```
 
 This complete run includes the Tavily regressions, capability visibility,

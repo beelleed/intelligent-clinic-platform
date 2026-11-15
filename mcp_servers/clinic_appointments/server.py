@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+import re
 from contextlib import closing
 from datetime import UTC, date, datetime
 
@@ -33,6 +34,16 @@ class AppointmentReservation(BaseModel):
     slot: AppointmentSlot
     created_at: str
     notice: str
+
+
+class ManagedReservation(AppointmentReservation):
+    status: str
+    can_cancel: bool
+    cancelled_at: str | None = None
+
+
+class ReservationList(BaseModel):
+    reservations: list[ManagedReservation]
 
 
 mcp = MCPServer(
@@ -116,12 +127,15 @@ def list_available_appointments(
 
 
 @mcp.tool()
-def book_appointment(slot_id: int) -> AppointmentReservation:
+def book_appointment(slot_id: int, owner_hash: str | None = None) -> AppointmentReservation:
     """Reserve one advertised slot and return an anonymous booking reference."""
     if slot_id < 1:
         raise ToolError("slot_id must be a positive integer.")
+    if owner_hash is not None:
+        _validate_owner(owner_hash)
 
     with closing(connect()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
         slot = connection.execute(
             """
             SELECT id, doctor_id, doctor_name, appointment_date,
@@ -141,9 +155,9 @@ def book_appointment(slot_id: int) -> AppointmentReservation:
         booking_reference = f"APT-{secrets.token_hex(4).upper()}"
         created_at = datetime.now(UTC).replace(microsecond=0).isoformat()
         connection.execute(
-            "INSERT INTO reservations (booking_reference, slot_id, created_at) "
-            "VALUES (?, ?, ?)",
-            (booking_reference, slot_id, created_at),
+            "INSERT INTO reservations (booking_reference, slot_id, created_at, owner_hash) "
+            "VALUES (?, ?, ?, ?)",
+            (booking_reference, slot_id, created_at, owner_hash),
         )
         connection.execute(
             "UPDATE appointment_slots SET is_available = 0 WHERE id = ?",
@@ -157,6 +171,56 @@ def book_appointment(slot_id: int) -> AppointmentReservation:
         created_at=to_clinic_iso(created_at),
         notice="Demo reservation only; no patient or insurance data was collected.",
     )
+
+
+def _validate_owner(owner_hash: str) -> None:
+    if not re.fullmatch(r"[a-f0-9]{64}", owner_hash):
+        raise ToolError("Reservation access is invalid.")
+
+
+def _managed_reservation(row) -> ManagedReservation:
+    future = _slot_is_future(row, datetime.now(UTC))
+    status = "cancelled" if row["cancelled_at"] else ("upcoming" if future else "past")
+    return ManagedReservation(
+        booking_reference=row["booking_reference"], slot=_slot_from_row(row),
+        created_at=to_clinic_iso(row["created_at"]), cancelled_at=to_clinic_iso(row["cancelled_at"]),
+        status=status, can_cancel=status == "upcoming",
+        notice="Synthetic demo reservation. No patient information was collected.",
+    )
+
+
+RESERVATION_QUERY = """SELECT r.booking_reference, r.created_at, r.cancelled_at,
+    s.id, s.doctor_id, s.doctor_name, s.appointment_date, s.start_time, s.end_time
+    FROM reservations r JOIN appointment_slots s ON s.id = r.slot_id"""
+
+
+@mcp.tool()
+def list_owned_appointments(owner_hash: str) -> ReservationList:
+    """Private application operation: list reservations for a verified browser owner."""
+    _validate_owner(owner_hash)
+    with closing(connect()) as connection:
+        rows = connection.execute(RESERVATION_QUERY + " WHERE r.owner_hash = ? ORDER BY s.appointment_date DESC, s.start_time DESC, r.created_at DESC", (owner_hash,)).fetchall()
+    return ReservationList(reservations=[_managed_reservation(row) for row in rows])
+
+
+@mcp.tool()
+def cancel_owned_appointment(booking_reference: str, owner_hash: str) -> ManagedReservation:
+    """Private application operation: cancel an owned future reservation atomically."""
+    _validate_owner(owner_hash)
+    with closing(connect()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(RESERVATION_QUERY + " WHERE r.booking_reference=? AND r.owner_hash=?", (booking_reference, owner_hash)).fetchone()
+        if row is None:
+            raise ToolError("This reservation is unavailable.")
+        if row["cancelled_at"]:
+            return _managed_reservation(row)
+        if not _slot_is_future(row, datetime.now(UTC)):
+            raise ToolError("Only upcoming reservations can be cancelled.")
+        connection.execute("UPDATE reservations SET cancelled_at=? WHERE booking_reference=? AND owner_hash=?", (datetime.now(UTC).isoformat(), booking_reference, owner_hash))
+        connection.execute("UPDATE appointment_slots SET is_available=1 WHERE id=?", (row["id"],))
+        connection.commit()
+        updated = connection.execute(RESERVATION_QUERY + " WHERE r.booking_reference=? AND r.owner_hash=?", (booking_reference, owner_hash)).fetchone()
+        return _managed_reservation(updated)
 
 
 if __name__ == "__main__":

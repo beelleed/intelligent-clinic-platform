@@ -66,7 +66,6 @@ def test_frontend_assets_use_chat_contract_and_session_memory() -> None:
     assert "Continue with clinic FAQs" in client.get("/").text
     assert "Ask Lumi" in client.get("/").text
     assert "Chat with Lumi" in script_response.text
-    assert "Back to Clinic FAQs" in script_response.text
     assert "Sample clinic FAQ information only" in script_response.text
     assert "Lumi provides sample clinic operations information" in script_response.text
     assert "demoQuestionElement.textContent = question" in script_response.text

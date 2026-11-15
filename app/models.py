@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, StringConstraints, Field
 
 
 QueryText = Annotated[
@@ -20,3 +20,6 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    cards: list[dict] = Field(default_factory=list)
+    available_dates: list[str] = Field(default_factory=list)
+    selected_date: str | None = None

@@ -20,6 +20,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 from pydantic import ValidationError
+from app.services.booking_owner import booking_owner_context
 from app.services.tavily import (
     GUIDANCE as EXTERNAL_GUIDANCE, TOOL_NAME as EXTERNAL_TOOL_NAME, TURN_BUDGET, append_external_sources,
     official_resource_search, tavily_enabled,
@@ -39,6 +40,10 @@ _evaluation_usage_sink: ContextVar[list[dict[str, Any]] | None] = ContextVar(
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MCP_CONFIG_PATH = PROJECT_ROOT / "mcp_config.json"
 SYSTEM_PROMPT = """You are an intelligent clinic operations and knowledge assistant.
+
+Saved reservations and cancellation are available through the website's My
+appointments button. Private management tools are not available to you. Do not
+infer that an old reservation remains active from chat memory alone.
 
 Follow these rules:
 1. For clinic-specific facts, policies, schedules, queue status, procedure status,
@@ -829,11 +834,33 @@ def _load_mcp_config() -> dict:
     return config
 
 
+def _public_mcp_tools(tools: list[BaseTool]) -> list[BaseTool]:
+    """Keep ownership operations private; supply browser ownership outside the LLM."""
+    visible = []
+    for item in tools:
+        if item.name.endswith(("list_owned_appointments", "cancel_owned_appointment")):
+            continue
+        if item.name.endswith("book_appointment"):
+            def wrap(original):
+                @tool(original.name, description=original.description)
+                async def book(slot_id: int) -> Any:
+                    arguments = {"slot_id": slot_id}
+                    owner = booking_owner_context.get()
+                    if owner is not None:
+                        arguments["owner_hash"] = owner
+                    return await original.ainvoke(arguments)
+                return book
+            visible.append(wrap(item))
+        else:
+            visible.append(item)
+    return visible
+
+
 async def _load_mcp_tools() -> list[BaseTool]:
     """Discover LangChain-compatible tools through the real MCP protocol."""
     try:
         async with MCPAdapter(_load_mcp_config()) as adapter:
-            return await adapter.list_tools()
+            return _public_mcp_tools(await adapter.list_tools())
     except MCPConnectionError:
         raise
     except Exception as exc:
@@ -1474,7 +1501,7 @@ async def initialize_chat_runtime() -> None:
 
     try:
         await adapter.__aenter__()
-        tools = await adapter.list_tools()
+        tools = _public_mcp_tools(await adapter.list_tools())
         graph = _build_runtime_graph(model, tools)
     except Exception:
         await adapter.__aexit__(*sys.exc_info())
@@ -1562,6 +1589,64 @@ async def create_chat_response(
         round((time.perf_counter() - started_at) * 1000),
         using_persistent_runtime,
     )
+    from app.services.result_cards import card_context, appointment_cards
+    context = card_context.get()
+    if context is not None:
+        context[1].extend(appointment_cards(state["messages"], context[0]))
     return append_external_sources(
         _answer_with_verified_sources(message.content, state["messages"]), state["messages"]
     )
+
+
+async def _with_clinic_tools(operation):
+    """Share connected MCP sessions safely, including calls without an LLM."""
+    if _runtime_adapter is not None and _runtime_invocation_lock is not None:
+        async with _runtime_invocation_lock:
+            return await operation(await _runtime_adapter.list_tools())
+    async with MCPAdapter(_load_mcp_config()) as adapter:
+        return await operation(await adapter.list_tools())
+
+
+async def read_clinic_tool(name: str, arguments: dict) -> list[dict]:
+    async def read(tools):
+        selected = next((item for item in tools if item.name == name), None)
+        if selected is None:
+            raise MCPConnectionError("The requested clinic tool is unavailable.")
+        return list(_nested_evidence_objects(await selected.ainvoke(arguments)))
+    return await _with_clinic_tools(read)
+
+
+async def confirm_appointment_selection(slot_id: int, session_id: str | None = None, owner_hash: str | None = None) -> dict:
+    """Book an explicitly confirmed slot through MCP, without another model turn."""
+    async def reserve(tools):
+        booking_tool = next((tool for tool in tools
+            if tool.name == "clinic_appointments_book_appointment"), None)
+        if booking_tool is None:
+            raise MCPConnectionError("The appointment tool is unavailable.")
+        arguments = {"slot_id": slot_id}
+        if owner_hash is not None:
+            arguments["owner_hash"] = owner_hash
+        result = await booking_tool.ainvoke(arguments)
+        for item in _nested_evidence_objects(result):
+            if item.get("booking_reference") and item.get("slot", {}).get("slot_id") == slot_id:
+                if session_id is not None and _runtime_graph is not None:
+                    call_id = str(uuid4())
+                    try:
+                        await _runtime_graph.aupdate_state(
+                            {"configurable": {"thread_id": session_id}},
+                            {"messages": [
+                                HumanMessage(content=f"I confirmed the demo reservation for slot {slot_id} using the appointment card."),
+                                AIMessage(content="", tool_calls=[{"id": call_id,
+                                    "name": booking_tool.name, "args": {"slot_id": slot_id}}]),
+                                ToolMessage(content=json.dumps(item), name=booking_tool.name, tool_call_id=call_id),
+                                AIMessage(content="Your demo appointment is reserved. Reference: " + item["booking_reference"]),
+                            ]}, as_node="model",
+                        )
+                    except Exception as exc:
+                        # A memory failure must not turn a completed write into
+                        # an apparent failure that invites a duplicate booking.
+                        LOGGER.warning("Reservation memory update failed (error_type=%s)", type(exc).__name__)
+                return item
+        raise ValueError("This slot could not be reserved. Ask Lumi for current availability.")
+
+    return await _with_clinic_tools(reserve)

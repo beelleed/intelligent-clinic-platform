@@ -7,6 +7,7 @@ import sqlite3
 import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from mcp_servers.demo_data import DEMO_DOCTORS, DEMO_SCHEDULES
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -132,12 +133,7 @@ def _seed_demo_data(connection: sqlite3.Connection) -> None:
     now = datetime.now(UTC).replace(microsecond=0)
     connection.executemany(
         "INSERT INTO doctors (id, name, specialty) VALUES (?, ?, ?)",
-        [
-            ("dr-lee", "Dr. Amanda Lee", "Family Medicine"),
-            ("dr-chen", "Dr. Michael Chen", "General Surgery"),
-            ("dr-rivera", "Dr. Sofia Rivera", "Dermatology"),
-            ("dr-park", "Dr. Daniel Park", "Otolaryngology (ENT)"),
-        ],
+        DEMO_DOCTORS,
     )
     connection.executemany(
         """
@@ -201,17 +197,7 @@ def _seed_demo_data(connection: sqlite3.Connection) -> None:
             doctor_id, weekday, start_time, end_time, location
         ) VALUES (?, ?, ?, ?, ?)
         """,
-        [
-            ("dr-lee", "Monday", "09:00", "12:00", "Clinic A"),
-            ("dr-lee", "Wednesday", "13:00", "17:00", "Clinic A"),
-            ("dr-lee", "Friday", "09:00", "12:00", "Clinic B"),
-            ("dr-chen", "Tuesday", "09:00", "12:00", "Surgery Clinic"),
-            ("dr-chen", "Thursday", "13:00", "17:00", "Surgery Clinic"),
-            ("dr-rivera", "Monday", "13:00", "17:00", "Specialty Suite"),
-            ("dr-rivera", "Thursday", "09:00", "12:00", "Specialty Suite"),
-            ("dr-park", "Tuesday", "13:00", "17:00", "Clinic B"),
-            ("dr-park", "Friday", "09:00", "12:00", "Clinic B"),
-        ],
+        DEMO_SCHEDULES,
     )
 
 
@@ -260,10 +246,5 @@ def _seed_additional_specialties(connection: sqlite3.Connection) -> None:
         """INSERT INTO schedules
            (doctor_id, weekday, start_time, end_time, location)
            VALUES (?, ?, ?, ?, ?)""",
-        [
-            ("dr-rivera", "Monday", "13:00", "17:00", "Specialty Suite"),
-            ("dr-rivera", "Thursday", "09:00", "12:00", "Specialty Suite"),
-            ("dr-park", "Tuesday", "13:00", "17:00", "Clinic B"),
-            ("dr-park", "Friday", "09:00", "12:00", "Clinic B"),
-        ],
+        [entry for entry in DEMO_SCHEDULES if entry[0] in {"dr-rivera", "dr-park"}],
     )
