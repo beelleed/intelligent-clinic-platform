@@ -571,7 +571,7 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .hidden { display: none !important; }
 @media (max-width: 900px) { .hero { gap: 20px; } .workspace { grid-template-columns: minmax(0, 1fr) 235px; gap: 18px; } .agent-scenarios { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .hero { grid-template-columns: 1fr; padding-top: 28px; gap: 24px; } .hero-copy { text-align: center; } h1 { font-size: 40px; } .subtitle { margin: 0 auto; } .hero-details { justify-content: center; font-size: 11px; } .welcome-illustration { width: min(100%, 380px); justify-self: center; } .welcome-illustration img { border-radius: 50px 50px 20px 20px; } .workspace { grid-template-columns: 1fr; } .section-header h2 { font-size: 24px; } }
-@media (max-width: 720px) { .hero { padding: 22px 0; } .welcome-illustration { display: none; } .hero-details { display: none; } .hero h1 { font-size: 32px; } .result-cards { grid-template-columns: 1fr; } .agent-scenarios { grid-template-columns: 1fr; } #booking-dialog { padding: 22px; } }
+@media (max-width: 720px) { .hero { padding: 22px 0; } .welcome-illustration { display: block; width: min(100%, 340px); max-width: 340px; } .hero-details { display: none; } .hero h1 { font-size: 32px; } .result-cards { grid-template-columns: 1fr; } .agent-scenarios { grid-template-columns: 1fr; } #booking-dialog { padding: 22px; } }
 
 /* Direct tasks, complete FAQs, and an independent conversation alongside. */
 #clinic-actions { margin-bottom: 26px; scroll-margin-top: 20px; }
